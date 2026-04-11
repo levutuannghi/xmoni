@@ -586,7 +586,29 @@ const Expense = {
     const file = event.target.files[0];
     if (!file) return;
 
-    // Engine 1: Native BarcodeDetector (fastest, Safari 17.2+, Chrome 83+)
+    // Engine 1: Html5Qrcode (ZXing-based, best for QR with logos — proven to work)
+    if (typeof Html5Qrcode !== 'undefined') {
+      try {
+        // Create temp container FIRST (required by Html5Qrcode)
+        let tmp = document.getElementById('__qr_scan_tmp__');
+        if (!tmp) {
+          tmp = document.createElement('div');
+          tmp.id = '__qr_scan_tmp__';
+          tmp.style.display = 'none';
+          document.body.appendChild(tmp);
+        }
+        const html5Qr = new Html5Qrcode('__qr_scan_tmp__', false);
+        const decoded = await html5Qr.scanFile(file, false);
+        html5Qr.clear();
+        if (decoded) {
+          this.onQRScanned(decoded);
+          event.target.value = '';
+          return;
+        }
+      } catch (e) { /* fallthrough */ }
+    }
+
+    // Engine 2: Native BarcodeDetector (Chrome 83+, Safari 17.2+)
     if (typeof BarcodeDetector !== 'undefined') {
       try {
         const bitmap = await createImageBitmap(file);
@@ -601,29 +623,7 @@ const Expense = {
       } catch (e) { /* fallthrough */ }
     }
 
-    // Engine 2: Html5Qrcode (ZXing-based, best for QR with logos)
-    if (typeof Html5Qrcode !== 'undefined') {
-      try {
-        const html5Qr = new Html5Qrcode('__qr_scan_tmp__', /* verbose */ false);
-        // Create temp container (required by Html5Qrcode but not shown)
-        let tmp = document.getElementById('__qr_scan_tmp__');
-        if (!tmp) {
-          tmp = document.createElement('div');
-          tmp.id = '__qr_scan_tmp__';
-          tmp.style.display = 'none';
-          document.body.appendChild(tmp);
-        }
-        const decoded = await html5Qr.scanFile(file, /* showImage */ false);
-        html5Qr.clear();
-        if (decoded) {
-          this.onQRScanned(decoded);
-          event.target.value = '';
-          return;
-        }
-      } catch (e) { /* fallthrough */ }
-    }
-
-    // Engine 3: QrScanner (jsQR fallback)
+    // Engine 3: QrScanner (jsQR fallback — may fail on CDN due to CORS worker)
     try {
       const result = await QrScanner.scanImage(file, {
         returnDetailedScanResult: true,
