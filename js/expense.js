@@ -259,8 +259,12 @@ const Expense = {
               ${recentApps.map(app => this._bankPickerItem(app)).join('')}
             </div>
           ` : ''}
-          <div class="bank-picker-section-title">Tất cả ngân hàng</div>
+          <div class="bank-picker-section-title">Tất cả ngân hàng <span style="font-size:0.65rem;color:var(--accent-success);font-weight:400">✔ = hỗ trợ mở app</span></div>
           <div class="bank-picker-grid" id="bank-all-grid">
+            <button class="bank-picker-item ${!this.selectedBankApp ? 'selected' : ''}" onclick="event.stopPropagation();Expense.clearBankApp()">
+              <span style="font-size:1.5rem">🚫</span>
+              <span>Không chọn</span>
+            </button>
             ${sorted.map(app => this._bankPickerItem(app)).join('')}
           </div>
         </div>
@@ -275,7 +279,10 @@ const Expense = {
     const n = app.appName.replace(/[\u200E\u200F]/g, '');
     const selected = this.selectedBankApp === app.appId ? 'selected' : '';
     return `<button class="bank-picker-item ${selected}" data-id="${app.appId}" onclick="event.stopPropagation();Expense.selectBankApp('${app.appId}')">
-      <img src="${app.appLogo}" onerror="this.style.display='none'">
+      <div style="position:relative">
+        <img src="${app.appLogo}" onerror="this.style.display='none'">
+        <span style="position:absolute;bottom:-2px;right:-4px;font-size:0.6rem;">✅</span>
+      </div>
       <span>${n}</span>
     </button>`;
   },
@@ -299,6 +306,14 @@ const Expense = {
     const btn = document.getElementById('btn-bank-selector');
     if (btn) btn.innerHTML = this._getBankDisplay();
 
+    this.closeBankPicker();
+  },
+
+  clearBankApp() {
+    this.selectedBankApp = null;
+    localStorage.removeItem('xmoni_selected_bank');
+    const btn = document.getElementById('btn-bank-selector');
+    if (btn) btn.innerHTML = this._getBankDisplay();
     this.closeBankPicker();
   },
 
@@ -426,13 +441,19 @@ const Expense = {
     if (this.scannedQR && this.scannedQR.accountNo) {
       const qr = this.scannedQR;
       const bankCode = qr.bankCode || qr.bankBin;
-      const memo = (document.getElementById('qa-memo')?.value || '').trim() || qr.addInfo || 'XMoni';
+      const userMemo = (document.getElementById('qa-memo')?.value || '').trim();
+      const memo = userMemo || qr.addInfo || 'XMoni';
       const name = qr.accountName || '';
 
       if (app === 'tpb' && qr.rawText) {
         let qrContent = qr.rawText;
+        // Rebuild QR with user amount if changed
         if (amount > 0 && amount !== qr.amount) {
-          qrContent = this.rebuildQRWithAmount(qr.rawText, amount);
+          qrContent = this.rebuildQRWithAmount(qrContent, amount);
+        }
+        // Rebuild QR with user memo if changed
+        if (userMemo && userMemo !== qr.addInfo) {
+          qrContent = this.rebuildQRWithMemo(qrContent, userMemo);
         }
         deeplink = `hydro://applink?targetPage=QRPay&source=XMoni&qrContent=${encodeURIComponent(qrContent)}&callbackurl=${encodeURIComponent('https://levutuannghi.github.io/xmoni/')}`;
       } else {
@@ -477,43 +498,75 @@ const Expense = {
   qrScanner: null,
 
   startQRScanner() {
-    const container = document.getElementById('qr-scanner-container');
     if (this.qrScanner) { this.stopQRScanner(); return; }
 
+    // Create popup overlay
+    let overlay = document.getElementById('qr-scanner-overlay');
+    if (!overlay) {
+      overlay = document.createElement('div');
+      overlay.id = 'qr-scanner-overlay';
+      overlay.style.cssText = 'position:fixed;inset:0;z-index:3000;background:rgba(0,0,0,0.85);display:flex;flex-direction:column;align-items:center;justify-content:center;padding:20px;';
+      document.body.appendChild(overlay);
+    }
+
     const video = document.createElement('video');
-    video.style.cssText = 'width:100%;border-radius:8px;';
-    container.innerHTML = '';
-    container.appendChild(video);
+    video.style.cssText = 'width:100%;max-width:400px;border-radius:12px;';
+
+    overlay.innerHTML = '';
+
+    // Header
+    const header = document.createElement('div');
+    header.style.cssText = 'display:flex;justify-content:space-between;align-items:center;width:100%;max-width:400px;margin-bottom:12px;';
+    header.innerHTML = `<span style="color:white;font-weight:700;font-size:1rem;">📷 Quét mã QR</span>`;
     const closeBtn = document.createElement('button');
-    closeBtn.className = 'preset-btn';
-    closeBtn.style.cssText = 'width:100%;margin-top:6px';
-    closeBtn.textContent = '\u2715 Đóng camera';
+    closeBtn.style.cssText = 'background:rgba(255,255,255,0.15);border:none;color:white;width:36px;height:36px;border-radius:50%;font-size:1.2rem;cursor:pointer;';
+    closeBtn.textContent = '✕';
     closeBtn.onclick = () => Expense.stopQRScanner();
-    container.appendChild(closeBtn);
+    header.appendChild(closeBtn);
+    overlay.appendChild(header);
+
+    overlay.appendChild(video);
+
+    // Status text
+    const status = document.createElement('div');
+    status.id = 'qr-scan-status';
+    status.style.cssText = 'color:rgba(255,255,255,0.7);font-size:0.8rem;margin-top:12px;text-align:center;';
+    status.textContent = 'Hướng camera vào mã QR...';
+    overlay.appendChild(status);
+
+    this._lastScannedText = null;
 
     try {
       this.qrScanner = new QrScanner(video, result => {
+        // Prevent duplicate scans of same QR
+        if (result.data === this._lastScannedText) return;
+        this._lastScannedText = result.data;
         this.onQRScanned(result.data);
+        // Update status but DON'T stop scanner
+        const s = document.getElementById('qr-scan-status');
+        if (s) { s.textContent = '✅ Đã quét! Có thể quét mã khác hoặc đóng.'; s.style.color = '#00D68F'; }
       }, {
         preferredCamera: 'environment',
         highlightScanRegion: true,
         highlightCodeOutline: true,
-        maxScansPerSecond: 15,
+        maxScansPerSecond: 5,
       });
       this.qrScanner.start().catch(err => {
-        container.innerHTML = `<p style="color:var(--accent-danger);text-align:center;padding:8px;font-size:0.8rem">Camera: ${err}</p>`;
+        const s = document.getElementById('qr-scan-status');
+        if (s) { s.textContent = `❌ Camera: ${err}`; s.style.color = '#FF4757'; }
         this.qrScanner = null;
       });
     } catch (err) {
-      container.innerHTML = `<p style="color:var(--accent-danger);text-align:center;padding:8px;font-size:0.8rem">Không hỗ trợ camera</p>`;
+      const s = document.getElementById('qr-scan-status');
+      if (s) { s.textContent = '❌ Không hỗ trợ camera'; s.style.color = '#FF4757'; }
       this.qrScanner = null;
     }
   },
 
   stopQRScanner() {
     if (this.qrScanner) { this.qrScanner.stop(); this.qrScanner.destroy(); this.qrScanner = null; }
-    const c = document.getElementById('qr-scanner-container');
-    if (c) c.innerHTML = '';
+    const overlay = document.getElementById('qr-scanner-overlay');
+    if (overlay) overlay.remove();
   },
 
   async uploadQRImage(event) {
@@ -533,7 +586,7 @@ const Expense = {
   },
 
   onQRScanned(text) {
-    this.stopQRScanner();
+    // Don't stop scanner - user closes manually
 
     const tlv = this.parseEMVCo(text);
     const tag38 = tlv['38'];
@@ -604,9 +657,7 @@ const Expense = {
       if (numpadSection) numpadSection.style.display = 'none';
     }
 
-    if (banner) {
-      banner.innerHTML = `<div class="qr-banner success"><span>✅ ${bankName} • ${accountNo}${accountName ? ' • ' + accountName : ''}</span></div>`;
-    }
+
 
     Utils.showToast('Đã quét QR!', 'success');
   },
@@ -653,6 +704,41 @@ const Expense = {
       base = base.substring(0, idx58) + tag54 + base.substring(idx58);
     } else {
       base += tag54;
+    }
+    base += '6304';
+    let crc = 0xFFFF;
+    for (let i = 0; i < base.length; i++) {
+      crc ^= base.charCodeAt(i) << 8;
+      for (let j = 0; j < 8; j++) {
+        crc = crc & 0x8000 ? (crc << 1) ^ 0x1021 : crc << 1;
+        crc &= 0xFFFF;
+      }
+    }
+    return base + crc.toString(16).toUpperCase().padStart(4, '0');
+  },
+
+  rebuildQRWithMemo(raw, newMemo) {
+    let base = raw.replace(/6304[A-F0-9]{4}$/i, '');
+    // Tag 62 contains additional data, sub-tag 08 is memo
+    const tag62Match = base.match(/62(\d{2})/);
+    if (tag62Match) {
+      const tag62Start = base.indexOf('62' + tag62Match[1]);
+      const tag62Len = parseInt(tag62Match[1]);
+      const tag62End = tag62Start + 4 + tag62Len;
+      const tag62Content = base.substring(tag62Start + 4, tag62End);
+      // Remove old sub-tag 08
+      let newContent = tag62Content.replace(/08\d{2}[^]*?(?=\d{2}\d{2}|$)/, '');
+      // Re-parse to remove tag 08 properly
+      const parsed = this.parseEMVCo(tag62Content);
+      let rebuilt = '';
+      for (const [k, v] of Object.entries(parsed)) {
+        if (k === '08') continue;
+        rebuilt += k + v.length.toString().padStart(2, '0') + v;
+      }
+      // Add new tag 08
+      rebuilt += '08' + newMemo.length.toString().padStart(2, '0') + newMemo;
+      const newTag62 = '62' + rebuilt.length.toString().padStart(2, '0') + rebuilt;
+      base = base.substring(0, tag62Start) + newTag62 + base.substring(tag62End);
     }
     base += '6304';
     let crc = 0xFFFF;
