@@ -18,38 +18,61 @@ const Auth = {
             const checkGsi = setInterval(() => {
                 if (window.google && google.accounts && google.accounts.oauth2) {
                     clearInterval(checkGsi);
+                    clearTimeout(timeout);
 
-                    this.tokenClient = google.accounts.oauth2.initTokenRequestFlow
-                        ? null
-                        : google.accounts.oauth2.initTokenClient({
-                            client_id: this.CLIENT_ID,
-                            scope: this.SCOPES,
-                            callback: (response) => {
-                                if (response.error) {
-                                    console.error('Auth error:', response);
+                    this.tokenClient = google.accounts.oauth2.initTokenClient({
+                        client_id: this.CLIENT_ID,
+                        scope: this.SCOPES,
+                        callback: (response) => {
+                            if (response.error) {
+                                console.error('Auth error:', response);
+                                // If silent refresh failed, show login screen
+                                if (this._silentResolve) {
+                                    this._silentResolve(false);
+                                    this._silentResolve = null;
+                                } else {
                                     Utils.showToast('Đăng nhập thất bại', 'error');
-                                    return;
                                 }
-                                this.accessToken = response.access_token;
-                                sessionStorage.setItem('xmoni_token', response.access_token);
-                                this.fetchUserInfo().then(() => {
-                                    App.onLoginSuccess();
-                                });
-                            },
-                        });
-
-                    // Check for existing token
-                    const savedToken = sessionStorage.getItem('xmoni_token');
-                    if (savedToken) {
-                        this.accessToken = savedToken;
-                        this.fetchUserInfo().then((valid) => {
-                            if (valid) {
-                                resolve(true);
-                            } else {
-                                sessionStorage.removeItem('xmoni_token');
-                                resolve(false);
+                                return;
                             }
-                        });
+                            this.accessToken = response.access_token;
+                            localStorage.setItem('xmoni_token', response.access_token);
+                            localStorage.setItem('xmoni_token_time', Date.now().toString());
+
+                            this.fetchUserInfo().then(() => {
+                                if (this._silentResolve) {
+                                    this._silentResolve(true);
+                                    this._silentResolve = null;
+                                } else {
+                                    localStorage.setItem('xmoni_login_mode', 'google');
+                                    App.onLoginSuccess();
+                                }
+                            });
+                        },
+                    });
+
+                    // Check for previous Google login — try silent refresh
+                    const lastMode = localStorage.getItem('xmoni_login_mode');
+                    const savedToken = localStorage.getItem('xmoni_token');
+                    const tokenTime = parseInt(localStorage.getItem('xmoni_token_time') || '0');
+                    const tokenAge = Date.now() - tokenTime;
+
+                    if (lastMode === 'google' && savedToken) {
+                        if (tokenAge < 3500000) {
+                            // Token < ~58 min old, try using it directly
+                            this.accessToken = savedToken;
+                            this.fetchUserInfo().then((valid) => {
+                                if (valid) {
+                                    resolve(true);
+                                } else {
+                                    // Token expired, try silent refresh
+                                    this.silentRefresh().then(resolve);
+                                }
+                            });
+                        } else {
+                            // Token expired, try silent refresh
+                            this.silentRefresh().then(resolve);
+                        }
                     } else {
                         resolve(false);
                     }
@@ -57,14 +80,34 @@ const Auth = {
             }, 100);
 
             // Timeout after 5s
-            setTimeout(() => {
+            const timeout = setTimeout(() => {
                 clearInterval(checkGsi);
                 resolve(false);
             }, 5000);
         });
     },
 
-    // Trigger login
+    // Try to get a new token silently (no user interaction)
+    silentRefresh() {
+        return new Promise((resolve) => {
+            this._silentResolve = resolve;
+            try {
+                this.tokenClient.requestAccessToken({ prompt: '' });
+            } catch (e) {
+                console.log('Silent refresh failed:', e);
+                resolve(false);
+            }
+            // Timeout: if silent refresh doesn't respond in 3s, fail
+            setTimeout(() => {
+                if (this._silentResolve) {
+                    this._silentResolve(false);
+                    this._silentResolve = null;
+                }
+            }, 3000);
+        });
+    },
+
+    // Trigger login (user-initiated)
     login() {
         if (this.CLIENT_ID === 'YOUR_CLIENT_ID_HERE') {
             Utils.showToast('Cần cấu hình Google Client ID trước!', 'error');
@@ -72,7 +115,7 @@ const Auth = {
             return;
         }
         if (this.tokenClient) {
-            this.tokenClient.requestAccessToken();
+            this.tokenClient.requestAccessToken({ prompt: 'consent' });
         }
     },
 
@@ -104,12 +147,17 @@ const Auth = {
 
     // Logout
     logout() {
+        const token = this.accessToken;
         this.accessToken = null;
         this.user = null;
-        sessionStorage.removeItem('xmoni_token');
-        if (google.accounts.oauth2.revoke) {
-            google.accounts.oauth2.revoke(this.accessToken);
-        }
+        localStorage.removeItem('xmoni_token');
+        localStorage.removeItem('xmoni_token_time');
+        localStorage.removeItem('xmoni_login_mode');
+        try {
+            if (token && google.accounts.oauth2.revoke) {
+                google.accounts.oauth2.revoke(token);
+            }
+        } catch (e) { /* ignore */ }
         App.onLogout();
     },
 
