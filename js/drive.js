@@ -20,9 +20,9 @@ const Drive = {
         try {
             // Query all 3 tables in parallel
             const [budgetsRes, monthlyRes, expensesRes] = await Promise.all([
-                supabase.from('budgets').select('*').eq('user_id', userId),
-                supabase.from('monthly_budgets').select('*').eq('user_id', userId),
-                supabase.from('expenses').select('*').eq('user_id', userId),
+                supabaseClient.from('budgets').select('*').eq('user_id', userId),
+                supabaseClient.from('monthly_budgets').select('*').eq('user_id', userId),
+                supabaseClient.from('expenses').select('*').eq('user_id', userId),
             ]);
 
             // Transform budgets
@@ -72,13 +72,13 @@ const Drive = {
                 color: b.color || '#7c3aed',
             }));
             if (budgetRows.length > 0) {
-                await supabase.from('budgets').upsert(budgetRows, { onConflict: 'id' });
+                await supabaseClient.from('budgets').upsert(budgetRows, { onConflict: 'id' });
             }
 
             // Delete removed budgets
             const budgetIds = data.budgets.map(b => b.id);
             if (budgetIds.length > 0) {
-                await supabase.from('budgets')
+                await supabaseClient.from('budgets')
                     .delete()
                     .eq('user_id', userId)
                     .not('id', 'in', `(${budgetIds.join(',')})`);
@@ -97,7 +97,7 @@ const Drive = {
                 });
             });
             if (monthlyRows.length > 0) {
-                await supabase.from('monthly_budgets').upsert(monthlyRows, {
+                await supabaseClient.from('monthly_budgets').upsert(monthlyRows, {
                     onConflict: 'user_id,month_key,budget_id',
                 });
             }
@@ -112,13 +112,13 @@ const Drive = {
                 note: e.note || '',
             }));
             if (expenseRows.length > 0) {
-                await supabase.from('expenses').upsert(expenseRows, { onConflict: 'id' });
+                await supabaseClient.from('expenses').upsert(expenseRows, { onConflict: 'id' });
             }
 
             // Delete removed expenses
             const expenseIds = data.expenses.map(e => e.id);
             if (expenseIds.length > 0) {
-                await supabase.from('expenses')
+                await supabaseClient.from('expenses')
                     .delete()
                     .eq('user_id', userId)
                     .not('id', 'in', `(${expenseIds.join(',')})`);

@@ -5,7 +5,7 @@
 const SUPABASE_URL = 'https://fmcupvjellycdvdfrhxx.supabase.co';
 const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZtY3VwdmplbGx5Y2R2ZGZyaHh4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzU5MDQ3ODQsImV4cCI6MjA5MTQ4MDc4NH0.DYLF4__IUt496IXKiX28VgLoMpAHazS2inmUwKratUw';
 
-let supabase;
+let supabaseClient;
 
 const Auth = {
     user: null,
@@ -29,10 +29,10 @@ const Auth = {
             return false;
         }
 
-        supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+        supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
         // Listen for auth state changes (auto-refresh, login, logout)
-        supabase.auth.onAuthStateChange((event, session) => {
+        supabaseClient.auth.onAuthStateChange((event, session) => {
             if (event === 'SIGNED_IN' && session) {
                 this.user = this.extractUser(session.user);
                 this.renderUserInfo();
@@ -42,7 +42,7 @@ const Auth = {
         });
 
         // Check existing session
-        const { data: { session } } = await supabase.auth.getSession();
+        const { data: { session } } = await supabaseClient.auth.getSession();
         if (session) {
             this.user = this.extractUser(session.user);
             this.renderUserInfo();
@@ -51,7 +51,7 @@ const Auth = {
 
         // Handle OAuth redirect callback (after Google/Facebook login)
         if (window.location.hash && window.location.hash.includes('access_token')) {
-            const { data: { session: newSession } } = await supabase.auth.getSession();
+            const { data: { session: newSession } } = await supabaseClient.auth.getSession();
             if (newSession) {
                 this.user = this.extractUser(newSession.user);
                 this.renderUserInfo();
@@ -79,7 +79,7 @@ const Auth = {
 
     // Login with provider (google / facebook)
     async login(provider = 'google') {
-        const { error } = await supabase.auth.signInWithOAuth({
+        const { error } = await supabaseClient.auth.signInWithOAuth({
             provider,
             options: {
                 redirectTo: window.location.origin + window.location.pathname,
@@ -103,7 +103,7 @@ const Auth = {
 
     // Logout
     async logout() {
-        await supabase.auth.signOut();
+        await supabaseClient.auth.signOut();
         this.user = null;
         App.onLogout();
     },
