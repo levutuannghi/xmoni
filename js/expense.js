@@ -199,12 +199,18 @@ const Expense = {
       return (b.monthlyInstall || 0) - (a.monthlyInstall || 0);
     });
 
-    grid.innerHTML = sorted.map(app =>
-      `<button class="bank-grid-btn" onclick="Expense.saveAndPay('${app.appId}')" title="${app.appName}">
-        <img src="${app.appLogo}" alt="${app.appName}" class="bank-logo" onerror="this.style.display='none'">
-        <span>${app.appName.replace(/[\u200E\u200F]/g, '').replace(/^\u200e/g, '')}</span>
-      </button>`
-    ).join('');
+    const isAndroid = /android/i.test(navigator.userAgent);
+    grid.innerHTML = sorted.map(app => {
+      let badge = '';
+      if (app.appId === 'tpb' && isAndroid) badge = '<span class="bank-badge tpb">\u26a1</span>';
+      else if (app.autofill === 1) badge = '<span class="bank-badge auto">\u2713</span>';
+      const cleanName = app.appName.replace(/[\u200E\u200F]/g, '');
+      return `<button class="bank-grid-btn" onclick="Expense.saveAndPay('${app.appId}')" title="${cleanName}">
+        ${badge}
+        <img src="${app.appLogo}" alt="${cleanName}" class="bank-logo" onerror="this.style.display='none'">
+        <span>${cleanName}</span>
+      </button>`;
+    }).join('');
   },
 
   // Track recently used bank
@@ -318,23 +324,36 @@ const Expense = {
       }
     }
 
-    // Build VietQR deep link with payment data
+    // Build deep link
     let deeplink = `https://dl.vietqr.io/pay?app=${app}`;
     if (this.scannedQR && this.scannedQR.accountNo) {
       const qr = this.scannedQR;
       const bankCode = qr.bankCode || qr.bankBin;
       const memo = qr.addInfo || 'XMoni';
       const name = qr.accountName || '';
-      deeplink += `&ba=${qr.accountNo}@${bankCode}`;
-      deeplink += `&am=${amount > 0 ? amount : 0}`;
-      deeplink += `&tn=${encodeURIComponent(memo)}`;
-      if (name) deeplink += `&bn=${encodeURIComponent(name)}`;
-      deeplink += `&url=${encodeURIComponent('https://levutuannghi.github.io/xmoni/')}`;
+
+      // TPBank on Android: use hydro:// scheme with raw QR content
+      const isAndroid = /android/i.test(navigator.userAgent);
+      if (app === 'tpb' && isAndroid && qr.rawText) {
+        // Rebuild QR with user's amount if different
+        let qrContent = qr.rawText;
+        if (amount > 0 && amount !== qr.amount) {
+          qrContent = this.rebuildQRWithAmount(qr.rawText, amount);
+        }
+        deeplink = `hydro://applink?targetPage=QRPay&source=XMoni&qrContent=${encodeURIComponent(qrContent)}&callbackurl=${encodeURIComponent('https://levutuannghi.github.io/xmoni/')}`;
+      } else {
+        // Standard VietQR deep link (all banks)
+        deeplink += `&ba=${qr.accountNo}@${bankCode}`;
+        deeplink += `&am=${amount > 0 ? amount : 0}`;
+        deeplink += `&tn=${encodeURIComponent(memo)}`;
+        if (name) deeplink += `&bn=${encodeURIComponent(name)}`;
+        deeplink += `&url=${encodeURIComponent('https://levutuannghi.github.io/xmoni/')}`;
+      }
     }
 
     this.trackRecentBank(app);
     this.closeQuickAdd();
-    window.open(deeplink, '_blank');
+    window.location.href = deeplink;
   },
 
   // ===== QR Scanner =====
@@ -385,6 +404,34 @@ const Expense = {
     if (this.qrScanner) { this.qrScanner.stop().catch(() => { }); this.qrScanner = null; }
     const c = document.getElementById('qr-scanner-container');
     if (c) c.innerHTML = '';
+  },
+
+  // Rebuild EMVCo QR string with a new amount (Tag 54)
+  rebuildQRWithAmount(raw, newAmount) {
+    // Remove existing CRC (Tag 63, always last 8 chars: 6304XXXX)
+    let base = raw.replace(/6304[A-F0-9]{4}$/i, '');
+    // Remove existing Tag 54 if present
+    const amtStr = newAmount.toString();
+    base = base.replace(/54\d{2}[0-9]+/, '');
+    // Insert Tag 54 before Tag 58 (country) or at end
+    const tag54 = `54${amtStr.length.toString().padStart(2, '0')}${amtStr}`;
+    const idx58 = base.indexOf('5802');
+    if (idx58 > 0) {
+      base = base.substring(0, idx58) + tag54 + base.substring(idx58);
+    } else {
+      base += tag54;
+    }
+    // Recalculate CRC16 (CRC-CCITT)
+    base += '6304';
+    let crc = 0xFFFF;
+    for (let i = 0; i < base.length; i++) {
+      crc ^= base.charCodeAt(i) << 8;
+      for (let j = 0; j < 8; j++) {
+        crc = crc & 0x8000 ? (crc << 1) ^ 0x1021 : crc << 1;
+        crc &= 0xFFFF;
+      }
+    }
+    return base + crc.toString(16).toUpperCase().padStart(4, '0');
   },
 
   // Parse EMVCo TLV (VietQR / NAPAS format)
@@ -483,8 +530,8 @@ const Expense = {
     const bankName = bank ? bank.shortName : bankBin;
     const bankCode = bank ? bank.code : null;
 
-    // Store scanned data
-    this.scannedQR = { bankBin, accountNo, amount, addInfo, bankName, accountName, bankCode };
+    // Store scanned data (including raw text for TPBank hydro:// scheme)
+    this.scannedQR = { bankBin, accountNo, amount, addInfo, bankName, accountName, bankCode, rawText: text };
 
     // Show banner with scanned info
     banner.innerHTML = `

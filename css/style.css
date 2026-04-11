@@ -1290,6 +1290,34 @@ textarea {
   text-overflow: ellipsis;
 }
 
+/* Autofill badge */
+.bank-badge {
+  position: absolute;
+  top: -2px;
+  right: -2px;
+  font-size: 0.5rem;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: white;
+  font-weight: 700;
+}
+
+.bank-badge.auto {
+  background: var(--accent-success);
+}
+
+.bank-badge.tpb {
+  background: #7b2dff;
+}
+
+.bank-grid-btn {
+  position: relative;
+}
+
 /* Daily spending bar in quick-add */
 .qa-daily-bar {
   background: rgba(255, 255, 255, 0.03);
