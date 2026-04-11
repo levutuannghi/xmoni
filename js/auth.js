@@ -31,7 +31,7 @@ const Auth = {
 
         supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
-        // Listen for auth state changes (auto-refresh, login, logout)
+        // Listen for auth state changes
         supabaseClient.auth.onAuthStateChange((event, session) => {
             if (event === 'SIGNED_IN' && session) {
                 this.user = this.extractUser(session.user);
@@ -49,18 +49,6 @@ const Auth = {
             return true;
         }
 
-        // Handle OAuth redirect callback (after Google/Facebook login)
-        if (window.location.hash && window.location.hash.includes('access_token')) {
-            const { data: { session: newSession } } = await supabaseClient.auth.getSession();
-            if (newSession) {
-                this.user = this.extractUser(newSession.user);
-                this.renderUserInfo();
-                // Clean URL hash
-                history.replaceState(null, '', window.location.pathname);
-                return true;
-            }
-        }
-
         return false;
     },
 
@@ -72,22 +60,66 @@ const Auth = {
             id: supaUser.id,
             email: supaUser.email,
             name: meta.full_name || meta.name || supaUser.email,
-            given_name: meta.full_name || meta.name || '',
+            given_name: meta.full_name || meta.name || supaUser.email?.split('@')[0] || '',
             picture: meta.avatar_url || meta.picture || '',
         };
     },
 
-    // Login with provider (google / facebook)
-    async login(provider = 'google') {
+    // Login with Google OAuth
+    async loginGoogle() {
         const { error } = await supabaseClient.auth.signInWithOAuth({
-            provider,
+            provider: 'google',
             options: {
                 redirectTo: window.location.origin + window.location.pathname,
             },
         });
         if (error) {
-            console.error('Login error:', error);
-            Utils.showToast('Đăng nhập thất bại: ' + error.message, 'error');
+            console.error('Google login error:', error);
+            Utils.showToast('Đăng nhập Google thất bại: ' + error.message, 'error');
+        }
+    },
+
+    // Login / Sign up with email + password
+    async loginEmail() {
+        const email = document.getElementById('login-email').value.trim();
+        const password = document.getElementById('login-password').value;
+
+        if (!email || !password) {
+            Utils.showToast('Nhập email và mật khẩu', 'error');
+            return;
+        }
+        if (password.length < 6) {
+            Utils.showToast('Mật khẩu ít nhất 6 ký tự', 'error');
+            return;
+        }
+
+        // Try sign in first, if fails try sign up
+        const { data, error } = await supabaseClient.auth.signInWithPassword({ email, password });
+
+        if (error && error.message.includes('Invalid login')) {
+            // User doesn't exist, sign up
+            const { data: signUpData, error: signUpError } = await supabaseClient.auth.signUp({
+                email,
+                password,
+            });
+            if (signUpError) {
+                Utils.showToast('Lỗi: ' + signUpError.message, 'error');
+                return;
+            }
+            if (signUpData.user && !signUpData.session) {
+                Utils.showToast('Kiểm tra email để xác nhận tài khoản!', 'info');
+                return;
+            }
+            // Auto-confirmed, login success
+            this.user = this.extractUser(signUpData.user);
+            this.renderUserInfo();
+            App.onLoginSuccess();
+        } else if (error) {
+            Utils.showToast('Lỗi: ' + error.message, 'error');
+        } else if (data.session) {
+            this.user = this.extractUser(data.user);
+            this.renderUserInfo();
+            App.onLoginSuccess();
         }
     },
 
@@ -97,8 +129,8 @@ const Auth = {
         if (!el || !this.user) return;
         const avatar = this.user.picture
             ? `<img src="${this.user.picture}" alt="avatar" class="user-avatar" referrerpolicy="no-referrer">`
-            : `<div class="user-avatar" style="display:flex;align-items:center;justify-content:center;background:var(--accent-primary);color:white;font-weight:700">${(this.user.name || '?')[0]}</div>`;
-        el.innerHTML = `${avatar}<span class="user-name">${this.user.given_name || this.user.name}</span>`;
+            : `<div class="user-avatar" style="display:flex;align-items:center;justify-content:center;background:var(--accent-primary);color:white;font-weight:700">${(this.user.name || '?')[0].toUpperCase()}</div>`;
+        el.innerHTML = `${avatar}<span class="user-name">${this.user.given_name}</span>`;
     },
 
     // Logout

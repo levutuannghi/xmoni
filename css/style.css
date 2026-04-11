@@ -178,31 +178,63 @@ textarea {
   height: 24px;
 }
 
-.btn-facebook {
+.login-divider {
   display: flex;
   align-items: center;
   gap: 12px;
-  margin-top: 12px;
-  padding: 14px 32px;
-  background: #1877F2;
+  margin: 16px 0 8px;
+  color: var(--text-muted);
+  font-size: 0.8rem;
+  width: 100%;
+  max-width: 300px;
+}
+
+.login-divider::before,
+.login-divider::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: var(--border-color);
+}
+
+.login-email-form {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  width: 100%;
+  max-width: 300px;
+}
+
+.login-input {
+  padding: 12px 16px;
+  background: var(--card-bg);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  color: var(--text-primary);
+  font-size: 0.9rem;
+  outline: none;
+  transition: var(--transition);
+}
+
+.login-input:focus {
+  border-color: var(--accent-primary);
+  box-shadow: 0 0 0 2px rgba(124, 58, 237, 0.2);
+}
+
+.btn-email-login {
+  padding: 12px 16px;
+  background: linear-gradient(135deg, var(--accent-primary), var(--accent-secondary));
   color: white;
   border: none;
   border-radius: var(--radius-xl);
-  font-size: 1rem;
+  font-size: 0.95rem;
   font-weight: 600;
   cursor: pointer;
   transition: var(--transition);
-  box-shadow: var(--shadow-md);
 }
 
-.btn-facebook:hover {
-  transform: translateY(-2px);
-  box-shadow: var(--shadow-lg);
-  background: #166fe5;
-}
-
-.btn-facebook:active {
-  transform: translateY(0);
+.btn-email-login:active {
+  transform: translateY(1px);
 }
 
 /* === Main App Layout === */
