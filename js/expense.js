@@ -84,12 +84,44 @@ const Expense = {
     this.inputAmount = '';
     const modal = document.getElementById('expense-modal');
 
+    // Calculate daily spending info
+    const monthKey = Utils.getCurrentMonthKey();
+    const today = Utils.getToday();
+    const totalDays = Utils.getDaysInMonth(monthKey);
+    const remainingDays = Utils.getRemainingDays(monthKey);
+
+    let totalBudget = 0, totalSpent = 0, totalCarryover = 0, todaySpent = 0;
+    data.budgets.forEach(b => {
+      const monthly = (data.monthlyBudgets[monthKey] || {})[b.id] || {};
+      totalBudget += monthly.amount || 0;
+      totalCarryover += Budget.calculateCarryovers(monthKey)[b.id] || 0;
+      totalSpent += Budget.getTotalSpent(monthKey, b.id);
+    });
+    todaySpent = data.expenses
+      .filter(e => e.date === today)
+      .reduce((s, e) => s + e.amount, 0);
+
+    const totalRemaining = totalBudget + totalCarryover - totalSpent;
+    const dailyRaw = remainingDays > 0 ? totalRemaining / remainingDays : 0;
+    const dailyBase = totalDays > 0 ? totalBudget / totalDays : 0;
+    const dailyAllowance = Math.max(0, Math.round(Math.min(dailyRaw, dailyBase)));
+    const dailyProgress = dailyAllowance > 0 ? Math.min((todaySpent / dailyAllowance) * 100, 100) : 0;
+    const dailyClass = dailyProgress > 85 ? 'danger' : dailyProgress > 60 ? 'warning' : 'safe';
+
     modal.innerHTML = `
       <div class="modal-overlay" onclick="Expense.closeQuickAdd()"></div>
       <div class="modal-content quick-add-modal slide-up">
         <div class="quick-add-header">
           <h3>Thêm chi tiêu</h3>
           <button class="btn-icon" onclick="Expense.closeQuickAdd()">✕</button>
+        </div>
+
+        <div class="qa-daily-bar">
+          <div class="qa-daily-info">
+            <span>Hôm nay: <strong>${Utils.formatCompactVND(todaySpent)}</strong></span>
+            <span>/ ${Utils.formatCompactVND(dailyAllowance)}</span>
+          </div>
+          <div class="qa-daily-progress"><div class="qa-daily-fill ${dailyClass}" style="width:${dailyProgress}%"></div></div>
         </div>
 
         <div class="quick-add-categories" id="qa-categories">
@@ -152,6 +184,14 @@ const Expense = {
             <button class="quick-pay-btn" onclick="Expense.saveAndPay('vpb')">🟣 VPB</button>
             <button class="quick-pay-btn" onclick="Expense.saveAndPay('vba')">🟤 Agri</button>
           </div>
+        </div>
+
+        <div class="vietqr-section">
+          <div class="quick-pay-label">Tạo mã QR chuyển khoản</div>
+          <div class="vietqr-form" id="vietqr-form">
+            <button class="quick-pay-btn vietqr-toggle" onclick="Expense.toggleVietQR()">📱 Tạo mã VietQR</button>
+          </div>
+          <div class="vietqr-result" id="vietqr-result"></div>
         </div>
       </div>
     `;
@@ -241,6 +281,81 @@ const Expense = {
     // Refresh current view
     if (App.state.currentView === 'expenses') this.render();
     if (App.state.currentView === 'dashboard') Dashboard.render();
+  },
+
+  // VietQR integration
+  toggleVietQR() {
+    const form = document.getElementById('vietqr-form');
+    const saved = JSON.parse(localStorage.getItem('xmoni_vietqr') || '{}');
+    form.innerHTML = `
+      <div class="vietqr-inputs">
+        <select id="vqr-bank" class="vqr-input">
+          <option value="">Chọn ngân hàng</option>
+          ${[
+        ['970415', 'VietinBank'], ['970418', 'BIDV'], ['970436', 'Vietcombank'],
+        ['970407', 'Techcombank'], ['970422', 'MB Bank'], ['970416', 'ACB'],
+        ['970432', 'VPBank'], ['970405', 'Agribank'], ['970423', 'TPBank'],
+        ['970448', 'OCB'], ['970437', 'HDBank'], ['970454', 'VIB'],
+        ['970449', 'LPBank'], ['970443', 'SHB'], ['970431', 'Eximbank'],
+      ].map(([id, name]) => `<option value="${id}" ${saved.bankId === id ? 'selected' : ''}>${name}</option>`).join('')}
+        </select>
+        <input type="text" id="vqr-account" class="vqr-input" placeholder="Số tài khoản" value="${saved.accountNo || ''}">
+        <input type="text" id="vqr-name" class="vqr-input" placeholder="Tên chủ TK (không dấu)" value="${saved.accountName || ''}">
+        <input type="text" id="vqr-info" class="vqr-input" placeholder="Nội dung CK (tùy chọn)">
+        <button class="btn-primary" onclick="Expense.generateVietQR()" style="padding:10px;font-size:0.85rem">Tạo mã QR</button>
+      </div>
+    `;
+  },
+
+  async generateVietQR() {
+    const bankId = document.getElementById('vqr-bank').value;
+    const accountNo = document.getElementById('vqr-account').value.trim();
+    const accountName = document.getElementById('vqr-name').value.trim();
+    const addInfo = document.getElementById('vqr-info').value.trim();
+
+    if (!bankId || !accountNo) {
+      Utils.showToast('Nhập ngân hàng và số tài khoản', 'error');
+      return;
+    }
+
+    // Save for next time
+    localStorage.setItem('xmoni_vietqr', JSON.stringify({ bankId, accountNo, accountName }));
+
+    // Get amount from input
+    const parsed = parseFloat(this.inputAmount) || 0;
+    const amount = Math.round(parsed * 1000);
+
+    const result = document.getElementById('vietqr-result');
+    result.innerHTML = '<p style="text-align:center;color:var(--text-muted)">Đang tạo mã QR...</p>';
+
+    try {
+      const res = await fetch('https://api.vietqr.io/v2/generate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          accountNo,
+          accountName: accountName.toUpperCase(),
+          acqId: parseInt(bankId),
+          amount: amount || undefined,
+          addInfo: addInfo || undefined,
+          template: 'compact',
+        }),
+      });
+      const data = await res.json();
+      if (data.code === '00' && data.data?.qrDataURL) {
+        result.innerHTML = `
+          <div class="vietqr-qr">
+            <img src="${data.data.qrDataURL}" alt="VietQR Code" class="vietqr-img">
+            <p class="vietqr-amount">${amount > 0 ? Utils.formatVND(amount) : 'Không giới hạn'}</p>
+            <p class="vietqr-account">${accountNo} • ${accountName}</p>
+          </div>
+        `;
+      } else {
+        result.innerHTML = '<p style="color:var(--accent-danger);text-align:center">Lỗi tạo mã QR. Kiểm tra thông tin.</p>';
+      }
+    } catch (e) {
+      result.innerHTML = '<p style="color:var(--accent-danger);text-align:center">Lỗi kết nối. Thử lại.</p>';
+    }
   },
 
   // Delete expense

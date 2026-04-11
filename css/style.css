@@ -1115,6 +1115,113 @@ textarea {
   margin-bottom: 0;
 }
 
+/* Daily spending bar in quick-add */
+.qa-daily-bar {
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-sm);
+  padding: 10px 14px;
+  margin-bottom: 12px;
+}
+
+.qa-daily-info {
+  display: flex;
+  justify-content: space-between;
+  font-size: 0.8rem;
+  color: var(--text-secondary);
+  margin-bottom: 6px;
+}
+
+.qa-daily-info strong {
+  color: var(--text-primary);
+}
+
+.qa-daily-progress {
+  height: 4px;
+  background: rgba(255, 255, 255, 0.08);
+  border-radius: 2px;
+  overflow: hidden;
+}
+
+.qa-daily-fill {
+  height: 100%;
+  border-radius: 2px;
+  transition: width 0.3s ease;
+}
+
+.qa-daily-fill.safe {
+  background: var(--accent-success);
+}
+
+.qa-daily-fill.warning {
+  background: var(--accent-warning);
+}
+
+.qa-daily-fill.danger {
+  background: var(--accent-danger);
+}
+
+/* VietQR Section */
+.vietqr-section {
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid var(--border-color);
+}
+
+.vietqr-toggle {
+  width: 100%;
+  justify-content: center;
+}
+
+.vietqr-inputs {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.vqr-input {
+  width: 100%;
+  padding: 10px 12px;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-sm);
+  color: var(--text-primary);
+  font-size: 0.85rem;
+  outline: none;
+}
+
+.vqr-input:focus {
+  border-color: var(--accent-primary);
+}
+
+select.vqr-input {
+  appearance: auto;
+}
+
+.vietqr-qr {
+  text-align: center;
+  padding: 12px 0;
+}
+
+.vietqr-img {
+  width: 220px;
+  max-width: 100%;
+  border-radius: var(--radius-md);
+}
+
+.vietqr-amount {
+  font-size: 1.1rem;
+  font-weight: 700;
+  color: var(--accent-primary);
+  margin-top: 8px;
+}
+
+.vietqr-account {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  margin-top: 2px;
+}
+
 .quick-add-categories {
   display: flex;
   flex-wrap: wrap;
