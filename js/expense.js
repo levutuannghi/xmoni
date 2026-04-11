@@ -118,9 +118,10 @@ const Expense = {
         <div class="quick-add-header">
           <h3>Thêm chi tiêu</h3>
           <div class="qa-header-actions">
-            <button class="btn-icon" onclick="Expense.startQRScanner()" title="Quét QR">📷</button>
+            <button class="btn-icon" onclick="document.getElementById('qr-file-input').click()" title="Upload QR">📤</button>
             <button class="btn-icon" onclick="Expense.closeQuickAdd()">✕</button>
           </div>
+          <input type="file" id="qr-file-input" accept="image/*" style="display:none" onchange="Expense.uploadQRImage(event)">
         </div>
 
         <div class="qa-daily-bar">
@@ -132,7 +133,6 @@ const Expense = {
         </div>
 
         <div id="qr-scanner-container"></div>
-        <div id="qr-scan-banner"></div>
 
         <div class="quick-add-categories" id="qa-categories">
           ${data.budgets.map(b => {
@@ -160,11 +160,18 @@ const Expense = {
     ).join('')}
         </div>
 
+        <div id="qr-scan-banner"></div>
+
         <div class="qa-bottom-row">
           <button class="btn-save-expense" id="btn-save-expense" onclick="Expense.saveExpense()" disabled>💾 Lưu</button>
+          <div id="qa-recent-banks"></div>
         </div>
 
-        <div class="qa-bank-label">Lưu & mở app ngân hàng:</div>
+        <button class="btn-qr-fab" onclick="Expense.startQRScanner()">
+          <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 7V5a2 2 0 012-2h2M17 3h2a2 2 0 012 2v2M21 17v2a2 2 0 01-2 2h-2M7 21H5a2 2 0 01-2-2v-2"/><rect x="7" y="7" width="4" height="4"/><rect x="13" y="7" width="4" height="4"/><rect x="7" y="13" width="4" height="4"/><path d="M13 13h4v4h-4z"/></svg>
+        </button>
+
+        <div class="qa-bank-label">Tất cả ngân hàng:</div>
         <div class="qa-bank-grid" id="qa-bank-grid"></div>
 
       </div>
@@ -177,40 +184,48 @@ const Expense = {
     this.renderBankGrid();
   },
 
-  // Render bank grid from iOS deep links API data
-  renderBankGrid() {
+// Render recent banks (bottom row) + all banks grid
+renderBankGrid() {
     const grid = document.getElementById('qa-bank-grid');
+    const recentEl = document.getElementById('qa-recent-banks');
     if (!grid) return;
 
     if (!this.appList || this.appList.length === 0) {
-      grid.innerHTML = '<p style="color:var(--text-muted);font-size:0.75rem;text-align:center">Đang tải...</p>';
-      this.loadAppList().then(() => this.renderBankGrid());
-      return;
+        grid.innerHTML = '<p style="color:var(--text-muted);font-size:0.75rem;text-align:center">Đang tải...</p>';
+        this.loadAppList().then(() => this.renderBankGrid());
+        return;
     }
 
-    // Sort: recently used first, then by popularity (monthlyInstall)
     const recent = JSON.parse(localStorage.getItem('xmoni_recent_banks') || '[]');
-    const sorted = [...this.appList].sort((a, b) => {
-      const ai = recent.indexOf(a.appId);
-      const bi = recent.indexOf(b.appId);
-      if (ai !== -1 && bi !== -1) return ai - bi;
-      if (ai !== -1) return -1;
-      if (bi !== -1) return 1;
-      return (b.monthlyInstall || 0) - (a.monthlyInstall || 0);
-    });
+    const appMap = {};
+    this.appList.forEach(a => appMap[a.appId] = a);
 
+    const mkBadge = (app) => {
+        if (app.appId === 'tpb') return '<span class="bank-badge tpb">\u26a1</span>';
+        if (app.autofill === 1) return '<span class="bank-badge auto">\u2713</span>';
+        return '';
+    };
+
+    // Recent banks in bottom row (max 2, same row as Save)
+    if (recentEl && recent.length > 0) {
+        const recentApps = recent.slice(0, 2).map(id => appMap[id]).filter(Boolean);
+        recentEl.innerHTML = recentApps.map(app => {
+            const n = app.appName.replace(/[\u200E\u200F]/g, '');
+            return `<button class="btn-recent-bank" onclick="Expense.saveAndPay('${app.appId}')">
+          ${mkBadge(app)}<img src="${app.appLogo}" class="bank-logo-sm" onerror="this.style.display='none'"><span>${n}</span>
+        </button>`;
+        }).join('');
+    }
+
+    // All banks grid
+    const sorted = [...this.appList].sort((a, b) => (b.monthlyInstall || 0) - (a.monthlyInstall || 0));
     grid.innerHTML = sorted.map(app => {
-      let badge = '';
-      if (app.appId === 'tpb') badge = '<span class="bank-badge tpb">\u26a1</span>';
-      else if (app.autofill === 1) badge = '<span class="bank-badge auto">\u2713</span>';
-      const cleanName = app.appName.replace(/[\u200E\u200F]/g, '');
-      return `<button class="bank-grid-btn" onclick="Expense.saveAndPay('${app.appId}')" title="${cleanName}">
-        ${badge}
-        <img src="${app.appLogo}" alt="${cleanName}" class="bank-logo" onerror="this.style.display='none'">
-        <span>${cleanName}</span>
+        const n = app.appName.replace(/[\u200E\u200F]/g, '');
+        return `<button class="bank-grid-btn" onclick="Expense.saveAndPay('${app.appId}')">
+        ${mkBadge(app)}<img src="${app.appLogo}" class="bank-logo" onerror="this.style.display='none'"><span>${n}</span>
       </button>`;
     }).join('');
-  },
+},
 
   // Track recently used bank
   trackRecentBank(code) {
@@ -354,54 +369,64 @@ const Expense = {
     window.location.href = deeplink;
   },
 
-  // ===== QR Scanner =====
+  // ===== QR Scanner (qr-scanner by Nimiq) =====
   qrScanner: null,
 
   startQRScanner() {
     const container = document.getElementById('qr-scanner-container');
     if (this.qrScanner) { this.stopQRScanner(); return; }
 
-    container.innerHTML = `
-      <div class="qr-scanner-wrapper">
-        <div id="qr-reader"></div>
-        <button class="preset-btn" onclick="Expense.stopQRScanner()" style="width:100%;margin-top:6px">✕ Đóng camera</button>
-      </div>
-    `;
+    const video = document.createElement('video');
+    video.style.cssText = 'width:100%;border-radius:8px;';
+    container.innerHTML = '';
+    container.appendChild(video);
+    const closeBtn = document.createElement('button');
+    closeBtn.className = 'preset-btn';
+    closeBtn.style.cssText = 'width:100%;margin-top:6px';
+    closeBtn.textContent = '\u2715 Đóng camera';
+    closeBtn.onclick = () => Expense.stopQRScanner();
+    container.appendChild(closeBtn);
 
     try {
-      this.qrScanner = new Html5Qrcode('qr-reader', {
-        formatsToSupport: [Html5QrcodeSupportedFormats.QR_CODE],
-        verbose: false,
+      this.qrScanner = new QrScanner(video, result => {
+        this.onQRScanned(result.data);
+      }, {
+        preferredCamera: 'environment',
+        highlightScanRegion: true,
+        highlightCodeOutline: true,
+        maxScansPerSecond: 15,
       });
-      const scanConfig = {
-        fps: 20,
-        qrbox: { width: 280, height: 280 },
-        disableFlip: true,
-        videoConstraints: {
-          facingMode: 'environment',
-          width: { ideal: 1920 },
-          height: { ideal: 1080 },
-        },
-      };
-      this.qrScanner.start(
-        { facingMode: 'environment' },
-        scanConfig,
-        (text) => this.onQRScanned(text),
-        () => { }
-      ).catch((err) => {
+      this.qrScanner.start().catch(err => {
         container.innerHTML = `<p style="color:var(--accent-danger);text-align:center;padding:8px;font-size:0.8rem">Camera: ${err}</p>`;
         this.qrScanner = null;
       });
     } catch (err) {
-      container.innerHTML = `<p style="color:var(--accent-danger);text-align:center;padding:8px;font-size:0.8rem">Không hỗ trợ camera</p>`;
+      container.innerHTML = `<p style="color:var(--accent-danger);text-align:center;padding:8px;font-size:0.8rem">Kh\u00f4ng h\u1ed7 tr\u1ee3 camera</p>`;
       this.qrScanner = null;
     }
   },
 
   stopQRScanner() {
-    if (this.qrScanner) { this.qrScanner.stop().catch(() => { }); this.qrScanner = null; }
+    if (this.qrScanner) { this.qrScanner.stop(); this.qrScanner.destroy(); this.qrScanner = null; }
     const c = document.getElementById('qr-scanner-container');
     if (c) c.innerHTML = '';
+  },
+
+  // Upload QR image from gallery
+  async uploadQRImage(event) {
+    const file = event.target.files[0];
+    if (!file) return;
+    try {
+      const result = await QrScanner.scanImage(file, { returnDetailedScanResult: true });
+      this.onQRScanned(result.data);
+    } catch (err) {
+      const banner = document.getElementById('qr-scan-banner');
+      if (banner) {
+        banner.innerHTML = '<div class="qr-banner error">\u274c Kh\u00f4ng t\u00ecm th\u1ea5y m\u00e3 QR trong \u1ea3nh</div>';
+        setTimeout(() => banner.innerHTML = '', 3000);
+      }
+    }
+    event.target.value = '';
   },
 
   // Rebuild EMVCo QR string with a new amount (Tag 54)
