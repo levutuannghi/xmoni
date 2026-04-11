@@ -132,18 +132,21 @@
   <!-- Scripts (order matters) -->
   <script src="js/utils.js"></script>
   <script src="js/auth.js"></script>
-  <script src="js/drive.js"></script>
-  <script src="js/budget.js"></script>
-  <script src="js/expense.js"></script>
-  <script src="js/dashboard.js"></script>
-  <script src="js/app.js"></script>
+  <script src="js/drive.js?v=12"></script>
+  <script src="js/budget.js?v=12"></script>
+  <script src="js/expense.js?v=12"></script>
+  <script src="js/dashboard.js?v=12"></script>
+  <script src="js/app.js?v=12"></script>
 
   <!-- Register Service Worker -->
   <script>
     if ('serviceWorker' in navigator) {
-      navigator.serviceWorker.register('./sw.js', { updateViaCache: 'none' })
-        .then(reg => { reg.update(); })
-        .catch(() => { });
+      navigator.serviceWorker.getRegistrations().then(regs => {
+        regs.forEach(r => r.unregister());
+      }).then(() => {
+        navigator.serviceWorker.register('./sw.js?v=12', { updateViaCache: 'none' })
+          .then(reg => { reg.update(); });
+      });
     }
   </script>
 
