@@ -1,137 +1,93 @@
 // ============================================
-// XMoni - Google OAuth Authentication
+// XMoni - Supabase Authentication
 // ============================================
 
-const Auth = {
-    // IMPORTANT: Replace with your own Client ID from Google Cloud Console
-    CLIENT_ID: '1071728757258-tidtkuf5rkj1nafjt3q9fe58gk2t71dk.apps.googleusercontent.com',
-    SCOPES: 'https://www.googleapis.com/auth/drive.file',
+const SUPABASE_URL = 'https://fmcupvjellycdvdfrhxx.supabase.co';
+const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZtY3VwdmplbGx5Y2R2ZGZyaHh4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzU5MDQ3ODQsImV4cCI6MjA5MTQ4MDc4NH0.DYLF4__IUt496IXKiX28VgLoMpAHazS2inmUwKratUw';
 
-    tokenClient: null,
-    accessToken: null,
+let supabase;
+
+const Auth = {
     user: null,
 
-    // Initialize Google Identity Services
-    init() {
-        return new Promise((resolve) => {
-            // Wait for Google Identity Services to load
-            const checkGsi = setInterval(() => {
-                if (window.google && google.accounts && google.accounts.oauth2) {
-                    clearInterval(checkGsi);
+    // Initialize Supabase client + check existing session
+    async init() {
+        // Wait for Supabase SDK to load
+        await new Promise((resolve) => {
+            const check = setInterval(() => {
+                if (window.supabase) {
+                    clearInterval(check);
                     clearTimeout(timeout);
-
-                    this.tokenClient = google.accounts.oauth2.initTokenClient({
-                        client_id: this.CLIENT_ID,
-                        scope: this.SCOPES,
-                        callback: (response) => {
-                            if (response.error) {
-                                console.error('Auth error:', response);
-                                // If silent refresh failed, show login screen
-                                if (this._silentResolve) {
-                                    this._silentResolve(false);
-                                    this._silentResolve = null;
-                                } else {
-                                    Utils.showToast('Đăng nhập thất bại', 'error');
-                                }
-                                return;
-                            }
-                            this.accessToken = response.access_token;
-                            localStorage.setItem('xmoni_token', response.access_token);
-                            localStorage.setItem('xmoni_token_time', Date.now().toString());
-
-                            this.fetchUserInfo().then(() => {
-                                if (this._silentResolve) {
-                                    this._silentResolve(true);
-                                    this._silentResolve = null;
-                                } else {
-                                    localStorage.setItem('xmoni_login_mode', 'google');
-                                    App.onLoginSuccess();
-                                }
-                            });
-                        },
-                    });
-
-                    // Check for previous Google login — try silent refresh
-                    const lastMode = localStorage.getItem('xmoni_login_mode');
-                    const savedToken = localStorage.getItem('xmoni_token');
-                    const tokenTime = parseInt(localStorage.getItem('xmoni_token_time') || '0');
-                    const tokenAge = Date.now() - tokenTime;
-
-                    if (lastMode === 'google' && savedToken) {
-                        if (tokenAge < 3500000) {
-                            // Token < ~58 min old, try using it directly
-                            this.accessToken = savedToken;
-                            this.fetchUserInfo().then((valid) => {
-                                if (valid) {
-                                    resolve(true);
-                                } else {
-                                    // Token expired, try silent refresh
-                                    this.silentRefresh().then(resolve);
-                                }
-                            });
-                        } else {
-                            // Token expired, try silent refresh
-                            this.silentRefresh().then(resolve);
-                        }
-                    } else {
-                        resolve(false);
-                    }
+                    resolve();
                 }
-            }, 100);
-
-            // Timeout after 5s
-            const timeout = setTimeout(() => {
-                clearInterval(checkGsi);
-                resolve(false);
-            }, 5000);
+            }, 50);
+            const timeout = setTimeout(() => { clearInterval(check); resolve(); }, 5000);
         });
-    },
 
-    // Try to get a new token silently (no user interaction)
-    silentRefresh() {
-        return new Promise((resolve) => {
-            this._silentResolve = resolve;
-            try {
-                this.tokenClient.requestAccessToken({ prompt: '' });
-            } catch (e) {
-                console.log('Silent refresh failed:', e);
-                resolve(false);
+        if (!window.supabase) {
+            console.error('Supabase SDK not loaded');
+            return false;
+        }
+
+        supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+
+        // Listen for auth state changes (auto-refresh, login, logout)
+        supabase.auth.onAuthStateChange((event, session) => {
+            if (event === 'SIGNED_IN' && session) {
+                this.user = this.extractUser(session.user);
+                this.renderUserInfo();
+            } else if (event === 'SIGNED_OUT') {
+                this.user = null;
             }
-            // Timeout: if silent refresh doesn't respond in 3s, fail
-            setTimeout(() => {
-                if (this._silentResolve) {
-                    this._silentResolve(false);
-                    this._silentResolve = null;
-                }
-            }, 3000);
         });
-    },
 
-    // Trigger login (user-initiated)
-    login() {
-        if (this.CLIENT_ID === 'YOUR_CLIENT_ID_HERE') {
-            Utils.showToast('Cần cấu hình Google Client ID trước!', 'error');
-            document.getElementById('setup-guide-modal').classList.add('active');
-            return;
-        }
-        if (this.tokenClient) {
-            this.tokenClient.requestAccessToken({ prompt: 'consent' });
-        }
-    },
-
-    // Fetch user profile info
-    async fetchUserInfo() {
-        try {
-            const res = await fetch('https://www.googleapis.com/oauth2/v3/userinfo', {
-                headers: { Authorization: `Bearer ${this.accessToken}` },
-            });
-            if (!res.ok) return false;
-            this.user = await res.json();
+        // Check existing session
+        const { data: { session } } = await supabase.auth.getSession();
+        if (session) {
+            this.user = this.extractUser(session.user);
             this.renderUserInfo();
             return true;
-        } catch (e) {
-            console.error('Failed to fetch user info:', e);
-            return false;
+        }
+
+        // Handle OAuth redirect callback (after Google/Facebook login)
+        if (window.location.hash && window.location.hash.includes('access_token')) {
+            const { data: { session: newSession } } = await supabase.auth.getSession();
+            if (newSession) {
+                this.user = this.extractUser(newSession.user);
+                this.renderUserInfo();
+                // Clean URL hash
+                history.replaceState(null, '', window.location.pathname);
+                return true;
+            }
+        }
+
+        return false;
+    },
+
+    // Extract user info from Supabase user object
+    extractUser(supaUser) {
+        if (!supaUser) return null;
+        const meta = supaUser.user_metadata || {};
+        return {
+            id: supaUser.id,
+            email: supaUser.email,
+            name: meta.full_name || meta.name || supaUser.email,
+            given_name: meta.full_name || meta.name || '',
+            picture: meta.avatar_url || meta.picture || '',
+        };
+    },
+
+    // Login with provider (google / facebook)
+    async login(provider = 'google') {
+        const { error } = await supabase.auth.signInWithOAuth({
+            provider,
+            options: {
+                redirectTo: window.location.origin + window.location.pathname,
+            },
+        });
+        if (error) {
+            console.error('Login error:', error);
+            Utils.showToast('Đăng nhập thất bại: ' + error.message, 'error');
         }
     },
 
@@ -139,30 +95,21 @@ const Auth = {
     renderUserInfo() {
         const el = document.getElementById('user-info');
         if (!el || !this.user) return;
-        el.innerHTML = `
-      <img src="${this.user.picture}" alt="avatar" class="user-avatar" referrerpolicy="no-referrer">
-      <span class="user-name">${this.user.given_name || this.user.name}</span>
-    `;
+        const avatar = this.user.picture
+            ? `<img src="${this.user.picture}" alt="avatar" class="user-avatar" referrerpolicy="no-referrer">`
+            : `<div class="user-avatar" style="display:flex;align-items:center;justify-content:center;background:var(--accent-primary);color:white;font-weight:700">${(this.user.name || '?')[0]}</div>`;
+        el.innerHTML = `${avatar}<span class="user-name">${this.user.given_name || this.user.name}</span>`;
     },
 
     // Logout
-    logout() {
-        const token = this.accessToken;
-        this.accessToken = null;
+    async logout() {
+        await supabase.auth.signOut();
         this.user = null;
-        localStorage.removeItem('xmoni_token');
-        localStorage.removeItem('xmoni_token_time');
-        localStorage.removeItem('xmoni_login_mode');
-        try {
-            if (token && google.accounts.oauth2.revoke) {
-                google.accounts.oauth2.revoke(token);
-            }
-        } catch (e) { /* ignore */ }
         App.onLogout();
     },
 
-    // Get access token
-    getToken() {
-        return this.accessToken;
+    // Get current user ID
+    getUserId() {
+        return this.user ? this.user.id : null;
     },
 };

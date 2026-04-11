@@ -19,17 +19,9 @@ const App = {
         document.getElementById('login-screen').style.display = 'none';
         document.getElementById('main-app').style.display = 'none';
 
-        // Check if last session was demo mode
-        const lastMode = localStorage.getItem('xmoni_login_mode');
-        if (lastMode === 'demo') {
-            await this.enterDemoMode(true);
-            return;
-        }
-
         const isLoggedIn = await Auth.init();
 
         if (isLoggedIn) {
-            localStorage.setItem('xmoni_login_mode', 'google');
             await this.onLoginSuccess();
         } else {
             document.getElementById('app-loading').style.display = 'none';
@@ -42,7 +34,7 @@ const App = {
         document.getElementById('app-loading').style.display = 'flex';
         document.getElementById('login-screen').style.display = 'none';
 
-        // Load data from Drive
+        // Load data from Supabase
         this.state.data = await Drive.loadData();
 
         document.getElementById('app-loading').style.display = 'none';
@@ -60,37 +52,8 @@ const App = {
     // Called on logout
     onLogout() {
         this.state.data = null;
-        Drive.demoMode = false;
-        localStorage.removeItem('xmoni_login_mode');
         document.getElementById('main-app').style.display = 'none';
         document.getElementById('login-screen').style.display = 'flex';
-    },
-
-    // Demo mode: skip Google login, use localStorage
-    async enterDemoMode(silent = false) {
-        Drive.demoMode = true;
-        localStorage.setItem('xmoni_login_mode', 'demo');
-        document.getElementById('app-loading').style.display = 'flex';
-        document.getElementById('login-screen').style.display = 'none';
-
-        this.state.data = await Drive.loadData();
-
-        // Set demo user info
-        const userInfo = document.getElementById('user-info');
-        userInfo.innerHTML = `
-            <span class="user-avatar" style="display:flex;align-items:center;justify-content:center;background:var(--accent-primary);font-size:1rem;width:32px;height:32px;border-radius:50%">🧪</span>
-            <span class="user-name">Demo Mode</span>
-        `;
-
-        document.getElementById('app-loading').style.display = 'none';
-        document.getElementById('main-app').style.display = 'flex';
-        this.switchView('dashboard');
-        if (!silent) Utils.showToast('Chế độ demo — dữ liệu lưu trên máy', 'info');
-
-        // Auto-open quick add if user has budgets
-        if (this.state.data.budgets.length > 0) {
-            setTimeout(() => Expense.showQuickAdd(), 300);
-        }
     },
 
     // Switch between views

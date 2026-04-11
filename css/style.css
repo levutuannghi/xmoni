@@ -178,22 +178,31 @@ textarea {
   height: 24px;
 }
 
-.btn-demo {
-  margin-top: 16px;
-  padding: 12px 28px;
-  background: transparent;
-  border: 1px solid var(--border-color);
-  color: var(--text-secondary);
+.btn-facebook {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: 12px;
+  padding: 14px 32px;
+  background: #1877F2;
+  color: white;
+  border: none;
   border-radius: var(--radius-xl);
-  font-size: 0.9rem;
+  font-size: 1rem;
+  font-weight: 600;
   cursor: pointer;
   transition: var(--transition);
+  box-shadow: var(--shadow-md);
 }
 
-.btn-demo:hover {
-  background: rgba(255, 255, 255, 0.05);
-  color: var(--text-primary);
-  border-color: var(--accent-primary);
+.btn-facebook:hover {
+  transform: translateY(-2px);
+  box-shadow: var(--shadow-lg);
+  background: #166fe5;
+}
+
+.btn-facebook:active {
+  transform: translateY(0);
 }
 
 /* === Main App Layout === */
