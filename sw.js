@@ -1,5 +1,5 @@
 // XMoni Service Worker - Network-first caching
-const CACHE_NAME = 'xmoni-v23';
+const CACHE_NAME = 'xmoni-v24';
 const ASSETS = [
     './',
     './index.html',
@@ -36,6 +36,9 @@ self.addEventListener('activate', (e) => {
 // Fetch: network-first for app files, cache-first for external resources
 self.addEventListener('fetch', (e) => {
     const url = new URL(e.request.url);
+
+    // Skip non-GET requests (Cache API only supports GET)
+    if (e.request.method !== 'GET') return;
 
     // Skip Google APIs entirely (auth, Drive)
     if (url.hostname.includes('googleapis.com') || url.hostname.includes('google.com')) {
