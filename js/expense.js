@@ -8,7 +8,7 @@ const Expense = {
   scannedQR: null, // stores parsed QR data after scan
 
   // Init: load bank list from VietQR API
-  init() { this.loadBankList(); },
+  init() { this.loadBankList(); this.loadAppList(); },
 
   // Render expense view
   render() {
@@ -177,36 +177,32 @@ const Expense = {
     this.renderBankGrid();
   },
 
-  // Render bank grid from VietQR API data
+  // Render bank grid from iOS deep links API data
   renderBankGrid() {
     const grid = document.getElementById('qa-bank-grid');
     if (!grid) return;
 
-    if (!this.bankList || this.bankList.length === 0) {
-      grid.innerHTML = '<p style="color:var(--text-muted);font-size:0.75rem;text-align:center">Đang tải danh sách NH...</p>';
-      // Retry after load
-      this.loadBankList().then(() => this.renderBankGrid());
+    if (!this.appList || this.appList.length === 0) {
+      grid.innerHTML = '<p style="color:var(--text-muted);font-size:0.75rem;text-align:center">Đang tải...</p>';
+      this.loadAppList().then(() => this.renderBankGrid());
       return;
     }
 
-    // Only show banks that support transfer
-    const transferBanks = this.bankList.filter(b => b.transferSupported === 1);
-
-    // Sort by recently used
+    // Sort: recently used first, then by popularity (monthlyInstall)
     const recent = JSON.parse(localStorage.getItem('xmoni_recent_banks') || '[]');
-    const sorted = [...transferBanks].sort((a, b) => {
-      const ai = recent.indexOf(a.code.toLowerCase());
-      const bi = recent.indexOf(b.code.toLowerCase());
+    const sorted = [...this.appList].sort((a, b) => {
+      const ai = recent.indexOf(a.appId);
+      const bi = recent.indexOf(b.appId);
       if (ai !== -1 && bi !== -1) return ai - bi;
       if (ai !== -1) return -1;
       if (bi !== -1) return 1;
-      return 0;
+      return (b.monthlyInstall || 0) - (a.monthlyInstall || 0);
     });
 
-    grid.innerHTML = sorted.map(b =>
-      `<button class="bank-grid-btn" onclick="Expense.saveAndPay('${b.code.toLowerCase()}')" title="${b.shortName}">
-        <img src="${b.logo}" alt="${b.shortName}" class="bank-logo" onerror="this.style.display='none'">
-        <span>${b.shortName}</span>
+    grid.innerHTML = sorted.map(app =>
+      `<button class="bank-grid-btn" onclick="Expense.saveAndPay('${app.appId}')" title="${app.appName}">
+        <img src="${app.appLogo}" alt="${app.appName}" class="bank-logo" onerror="this.style.display='none'">
+        <span>${app.appName.replace(/[\u200E\u200F]/g, '').replace(/^\u200e/g, '')}</span>
       </button>`
     ).join('');
   },
@@ -401,11 +397,11 @@ const Expense = {
     return r;
   },
 
-  // Bank list from VietQR API (cached in localStorage)
+  // Bank list (for BIN lookup) and app list (for deep links)
   bankList: null,
+  appList: null,
 
   async loadBankList() {
-    // Check cache (24h TTL)
     const cached = localStorage.getItem('xmoni_banks');
     if (cached) {
       try {
@@ -421,6 +417,28 @@ const Expense = {
         localStorage.setItem('xmoni_banks', JSON.stringify({ data: json.data, ts: Date.now() }));
       }
     } catch (e) { console.warn('Cannot load bank list:', e); }
+  },
+
+  async loadAppList() {
+    const cached = localStorage.getItem('xmoni_apps');
+    if (cached) {
+      try {
+        const { data, ts } = JSON.parse(cached);
+        if (Date.now() - ts < 86400000) { this.appList = data; return; }
+      } catch (e) { }
+    }
+    try {
+      const isAndroid = /android/i.test(navigator.userAgent);
+      const apiUrl = isAndroid
+        ? 'https://api.vietqr.io/v2/android-app-deeplinks'
+        : 'https://api.vietqr.io/v2/ios-app-deeplinks';
+      const res = await fetch(apiUrl);
+      const json = await res.json();
+      if (json.apps) {
+        this.appList = json.apps;
+        localStorage.setItem('xmoni_apps', JSON.stringify({ data: json.apps, ts: Date.now() }));
+      }
+    } catch (e) { console.warn('Cannot load app list:', e); }
   },
 
   lookupBank(bin) {
