@@ -130,12 +130,14 @@ const Expense = {
         <div class="quick-pay-section">
           <div class="quick-pay-label">Lưu & mở app thanh toán</div>
           <div class="quick-pay-buttons">
-            <button class="quick-pay-btn" onclick="Expense.saveAndPay('tpbank')">🏦 TPBank</button>
-            <button class="quick-pay-btn" onclick="Expense.saveAndPay('momo')">💜 MoMo</button>
-            <button class="quick-pay-btn" onclick="Expense.saveAndPay('zalopay')">💙 ZaloPay</button>
+            <button class="quick-pay-btn" onclick="Expense.saveAndPay('tpb')">🏦 TPBank</button>
             <button class="quick-pay-btn" onclick="Expense.saveAndPay('vcb')">🟢 VCB</button>
+            <button class="quick-pay-btn" onclick="Expense.saveAndPay('tcb')">🔴 TCB</button>
             <button class="quick-pay-btn" onclick="Expense.saveAndPay('bidv')">🔵 BIDV</button>
-            <button class="quick-pay-btn" onclick="Expense.saveAndPay('techcombank')">🔴 TCB</button>
+            <button class="quick-pay-btn" onclick="Expense.saveAndPay('mb')">⚫ MB</button>
+            <button class="quick-pay-btn" onclick="Expense.saveAndPay('acb')">🟡 ACB</button>
+            <button class="quick-pay-btn" onclick="Expense.saveAndPay('vpb')">🟣 VPB</button>
+            <button class="quick-pay-btn" onclick="Expense.saveAndPay('vba')">🟤 Agri</button>
           </div>
         </div>
       </div>
@@ -249,56 +251,9 @@ const Expense = {
     if (App.state.currentView === 'expenses') this.render();
     if (App.state.currentView === 'dashboard') Dashboard.render();
 
-    // App configs with universal links and store links
-    const apps = {
-      tpbank: {
-        universal: 'https://ebank.tpb.vn',
-        ios: 'https://apps.apple.com/vn/app/tpbank-mobile/id1001881988',
-        android: 'intent://main#Intent;scheme=tpbankapp;package=vn.tpb.mb.gprsandroid;end',
-      },
-      momo: {
-        universal: 'https://nhantien.momo.vn',
-        ios: 'https://apps.apple.com/vn/app/momo/id918751511',
-        android: 'intent://main#Intent;scheme=momo;package=com.mservice.momotransfer;end',
-      },
-      zalopay: {
-        universal: 'https://social.zalopay.vn',
-        ios: 'https://apps.apple.com/vn/app/zalopay/id1229814460',
-        android: 'intent://main#Intent;scheme=zalopay;package=vn.com.vng.zalopay;end',
-      },
-      vcb: {
-        universal: 'https://www.vietcombank.com.vn/vi-VN/chuyen-tien',
-        ios: 'https://apps.apple.com/vn/app/vietcombank/id907126017',
-        android: 'intent://main#Intent;scheme=vcbdigibank;package=com.VCB;end',
-      },
-      bidv: {
-        universal: 'https://smartbanking.bidv.com.vn',
-        ios: 'https://apps.apple.com/vn/app/bidv-smartbanking/id1067549928',
-        android: 'intent://main#Intent;scheme=bidvsmart;package=com.vnpay.bidv;end',
-      },
-      techcombank: {
-        universal: 'https://tcbs.com.vn',
-        ios: 'https://apps.apple.com/vn/app/techcombank-mobile/id1538283967',
-        android: 'intent://main#Intent;scheme=tcbmobile;package=vn.com.techcombank.bb.app;end',
-      },
-    };
-
-    const config = apps[app];
-    if (!config) return;
-
-    const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent);
-    const isAndroid = /Android/.test(navigator.userAgent);
-
-    if (isAndroid) {
-      // Android intent:// gracefully falls back to Play Store
-      window.location.href = config.android;
-    } else if (isIOS) {
-      // iOS: universal link opens app if installed, else opens in browser
-      window.location.href = config.universal;
-    } else {
-      // Desktop: open bank website
-      window.open(config.universal, '_blank');
-    }
+    // VietQR deep link - works on both iOS and Android
+    const deeplink = `https://dl.vietqr.io/pay?app=${app}`;
+    window.open(deeplink, '_blank');
   },
 
   closeQuickAdd() {
