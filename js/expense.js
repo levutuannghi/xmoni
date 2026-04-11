@@ -729,46 +729,38 @@ const Expense = {
 
   rebuildQRWithAmount(raw, newAmount) {
     let base = raw.replace(/6304[A-F0-9]{4}$/i, '');
-    const amtStr = newAmount.toString();
-    base = base.replace(/54\d{2}[0-9]+/, '');
-    const tag54 = `54${amtStr.length.toString().padStart(2, '0')}${amtStr}`;
-    const idx58 = base.indexOf('5802');
-    if (idx58 > 0) {
-      base = base.substring(0, idx58) + tag54 + base.substring(idx58);
-    } else {
-      base += tag54;
+    // Parse all tags, replace/add tag 54
+    const tags = this.parseEMVCo(base);
+    tags['54'] = newAmount.toString();
+    // Rebuild in proper order
+    let rebuilt = '';
+    const orderedKeys = Object.keys(tags).sort();
+    for (const k of orderedKeys) {
+      rebuilt += k + tags[k].length.toString().padStart(2, '0') + tags[k];
     }
-    return this._recalcCRC(base);
+    return this._recalcCRC(rebuilt);
   },
 
   rebuildQRWithMemo(raw, newMemo) {
     let base = raw.replace(/6304[A-F0-9]{4}$/i, '');
-    // Tag 62 contains additional data, sub-tag 08 is memo
-    const tag62Match = base.match(/62(\d{2})/);
-    if (tag62Match) {
-      // Tag 62 exists - replace/add sub-tag 08
-      const tag62Start = base.indexOf('62' + tag62Match[1]);
-      const tag62Len = parseInt(tag62Match[1]);
-      const tag62End = tag62Start + 4 + tag62Len;
-      const tag62Content = base.substring(tag62Start + 4, tag62End);
-      // Re-parse to rebuild without old tag 08
-      const parsed = this.parseEMVCo(tag62Content);
-      let rebuilt = '';
-      for (const [k, v] of Object.entries(parsed)) {
-        if (k === '08') continue;
-        rebuilt += k + v.length.toString().padStart(2, '0') + v;
-      }
-      // Add new tag 08
-      rebuilt += '08' + newMemo.length.toString().padStart(2, '0') + newMemo;
-      const newTag62 = '62' + rebuilt.length.toString().padStart(2, '0') + rebuilt;
-      base = base.substring(0, tag62Start) + newTag62 + base.substring(tag62End);
-    } else {
-      // No tag 62 - create it with sub-tag 08
-      const tag08 = '08' + newMemo.length.toString().padStart(2, '0') + newMemo;
-      const tag62 = '62' + tag08.length.toString().padStart(2, '0') + tag08;
-      base += tag62;
+    const tags = this.parseEMVCo(base);
+    // Tag 62 sub-tags: parse, replace sub-tag 08
+    const tag62Content = tags['62'] || '';
+    const subTags = tag62Content ? this.parseEMVCo(tag62Content) : {};
+    subTags['08'] = newMemo;
+    // Rebuild tag 62
+    let rebuilt62 = '';
+    for (const [k, v] of Object.entries(subTags)) {
+      rebuilt62 += k + v.length.toString().padStart(2, '0') + v;
     }
-    return this._recalcCRC(base);
+    tags['62'] = rebuilt62;
+    // Rebuild full QR
+    let rebuilt = '';
+    const orderedKeys = Object.keys(tags).sort();
+    for (const k of orderedKeys) {
+      rebuilt += k + tags[k].length.toString().padStart(2, '0') + tags[k];
+    }
+    return this._recalcCRC(rebuilt);
   },
 
   _recalcCRC(base) {

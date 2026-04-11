@@ -1556,7 +1556,7 @@ select.qa-transfer-input option {
   align-items: center;
   justify-content: center;
   gap: 8px;
-  padding: 12px 16px;
+  padding: 16px 16px;
   background: linear-gradient(135deg, var(--accent-primary), #8B5CF6);
   color: white;
   border: none;
