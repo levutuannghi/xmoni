@@ -322,10 +322,14 @@ const Expense = {
     let deeplink = `https://dl.vietqr.io/pay?app=${app}`;
     if (this.scannedQR && this.scannedQR.accountNo) {
       const qr = this.scannedQR;
-      deeplink += `&ba=${qr.accountNo}@${qr.bankCode || qr.bankBin}`;
-      if (amount > 0) deeplink += `&am=${amount}`;
-      if (qr.addInfo) deeplink += `&tn=${encodeURIComponent(qr.addInfo)}`;
-      if (qr.accountName) deeplink += `&bn=${encodeURIComponent(qr.accountName)}`;
+      const bankCode = qr.bankCode || qr.bankBin;
+      const memo = qr.addInfo || 'XMoni';
+      const name = qr.accountName || '';
+      deeplink += `&ba=${qr.accountNo}@${bankCode}`;
+      deeplink += `&am=${amount > 0 ? amount : 0}`;
+      deeplink += `&tn=${encodeURIComponent(memo)}`;
+      if (name) deeplink += `&bn=${encodeURIComponent(name)}`;
+      deeplink += `&url=${encodeURIComponent('https://levutuannghi.github.io/xmoni/')}`;
     }
 
     this.trackRecentBank(app);
