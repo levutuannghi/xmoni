@@ -315,7 +315,7 @@ const Expense = {
       this.qrScanner = new Html5Qrcode('qr-reader');
       this.qrScanner.start(
         { facingMode: 'environment' },
-        { fps: 10, qrbox: { width: 220, height: 220 } },
+        { fps: 15, qrbox: undefined, aspectRatio: 1.0 },
         (text) => this.onQRScanned(text),
         () => { }
       ).catch((err) => {
@@ -418,16 +418,7 @@ const Expense = {
       </div>
     `;
 
-    // Replace bank buttons with auto-detected transfer button
-    if (bankCode) {
-      const bottomRow = document.querySelector('.qa-bottom-row');
-      if (bottomRow) {
-        bottomRow.innerHTML = `
-          <button class="btn-save-expense" id="btn-save-expense" onclick="Expense.saveExpense()" ${this.inputAmount ? '' : 'disabled'}>💾 Lưu</button>
-          <button class="btn-qr-transfer" onclick="Expense.saveAndPay('${bankCode}')">💳 Chuyển qua ${bankName}</button>
-        `;
-      }
-    }
+
 
     // Auto-fill amount
     if (amount > 0) {
