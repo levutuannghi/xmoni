@@ -128,13 +128,14 @@ const Expense = {
         </button>
 
         <div class="quick-pay-section">
-          <div class="quick-pay-label">Mở app thanh toán</div>
+          <div class="quick-pay-label">Lưu & mở app thanh toán</div>
           <div class="quick-pay-buttons">
-            <a class="quick-pay-btn" href="https://pay.apple.com" onclick="Expense.openPayApp('apple')">🍎 Apple Pay</a>
-            <a class="quick-pay-btn" href="tpbank://transfer" onclick="Expense.openPayApp('tpbank')">🏦 TPBank</a>
-            <a class="quick-pay-btn" href="momo://transfer" onclick="Expense.openPayApp('momo')">💜 MoMo</a>
-            <a class="quick-pay-btn" href="zalopay://transfer" onclick="Expense.openPayApp('zalopay')">💙 ZaloPay</a>
-            <a class="quick-pay-btn" href="vcbdigibank://transfer" onclick="Expense.openPayApp('vcb')">🟢 VCB</a>
+            <button class="quick-pay-btn" onclick="Expense.saveAndPay('tpbank')">🏦 TPBank</button>
+            <button class="quick-pay-btn" onclick="Expense.saveAndPay('momo')">💜 MoMo</button>
+            <button class="quick-pay-btn" onclick="Expense.saveAndPay('zalopay')">💙 ZaloPay</button>
+            <button class="quick-pay-btn" onclick="Expense.saveAndPay('vcb')">🟢 VCB</button>
+            <button class="quick-pay-btn" onclick="Expense.saveAndPay('bidv')">🔵 BIDV</button>
+            <button class="quick-pay-btn" onclick="Expense.saveAndPay('techcombank')">🔴 TCB</button>
           </div>
         </div>
       </div>
@@ -220,20 +221,87 @@ const Expense = {
     Utils.showToast('Đã xóa');
   },
 
-  // Open banking/payment app via deep link
-  openPayApp(app) {
-    const deepLinks = {
-      apple: 'shoebox://',       // Apple Wallet
-      tpbank: 'tpbank://',
-      momo: 'momo://',
-      zalopay: 'zalopay://',
-      vcb: 'vcbdigibank://',
-    };
-    const link = deepLinks[app];
-    if (link) {
-      // Try deep link, will open app on mobile if installed
-      window.location.href = link;
+  // Save expense then open banking app
+  saveAndPay(app) {
+    // Save expense first
+    const parsed = parseFloat(this.inputAmount) || 0;
+    const amount = Math.round(parsed * 1000);
+
+    if (amount > 0) {
+      const selectedChip = document.querySelector('.category-chip.selected');
+      if (selectedChip) {
+        const expense = {
+          id: Utils.generateId(),
+          date: document.getElementById('qa-date').value,
+          budgetId: selectedChip.dataset.id,
+          amount,
+          note: (document.getElementById('qa-note').value || '').trim(),
+        };
+        App.state.data.expenses.push(expense);
+        Drive.queueSave(App.state.data);
+        Utils.showToast(`Đã lưu -${Utils.formatVND(amount)}`, 'success');
+      }
     }
+
+    this.closeQuickAdd();
+
+    // Refresh views
+    if (App.state.currentView === 'expenses') this.render();
+    if (App.state.currentView === 'dashboard') Dashboard.render();
+
+    // Deep link configs: try scheme first, fallback to app store
+    const apps = {
+      tpbank: {
+        scheme: 'tpb.vn.ebank://',
+        ios: 'https://apps.apple.com/vn/app/tpbank-mobile/id1001881988',
+        android: 'https://play.google.com/store/apps/details?id=vn.tpb.mb.gprsandroid',
+      },
+      momo: {
+        scheme: 'momo://',
+        ios: 'https://apps.apple.com/vn/app/momo-chuyển-tiền-thanh-toán/id918751511',
+        android: 'https://play.google.com/store/apps/details?id=com.mservice.momotransfer',
+      },
+      zalopay: {
+        scheme: 'zalopay://',
+        ios: 'https://apps.apple.com/vn/app/zalopay-chuyển-tiền-thanh-toán/id1229814460',
+        android: 'https://play.google.com/store/apps/details?id=vn.com.vng.zalopay',
+      },
+      vcb: {
+        scheme: 'vcbdigibank://',
+        ios: 'https://apps.apple.com/vn/app/vietcombank/id907126017',
+        android: 'https://play.google.com/store/apps/details?id=com.VCB',
+      },
+      bidv: {
+        scheme: 'com.bidv.smartbanking://',
+        ios: 'https://apps.apple.com/vn/app/bidv-smartbanking/id1067549928',
+        android: 'https://play.google.com/store/apps/details?id=com.vnpay.bidv',
+      },
+      techcombank: {
+        scheme: 'tcbmobilebanking://',
+        ios: 'https://apps.apple.com/vn/app/techcombank-mobile/id1538283967',
+        android: 'https://play.google.com/store/apps/details?id=vn.com.techcombank.bb.app',
+      },
+    };
+
+    const config = apps[app];
+    if (!config) return;
+
+    // Try deep link via hidden iframe (won't navigate away if app isn't installed)
+    const iframe = document.createElement('iframe');
+    iframe.style.display = 'none';
+    iframe.src = config.scheme;
+    document.body.appendChild(iframe);
+
+    // Fallback: if app didn't open in 1.5s, go to app store
+    const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent);
+    setTimeout(() => {
+      iframe.remove();
+      // Only fallback if page is still visible (app didn't open)
+      if (!document.hidden) {
+        const storeLink = isIOS ? config.ios : config.android;
+        window.open(storeLink, '_blank');
+      }
+    }, 1500);
   },
 
   closeQuickAdd() {
