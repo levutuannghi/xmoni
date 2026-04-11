@@ -249,59 +249,56 @@ const Expense = {
     if (App.state.currentView === 'expenses') this.render();
     if (App.state.currentView === 'dashboard') Dashboard.render();
 
-    // Deep link configs: try scheme first, fallback to app store
+    // App configs with universal links and store links
     const apps = {
       tpbank: {
-        scheme: 'tpb.vn.ebank://',
+        universal: 'https://ebank.tpb.vn',
         ios: 'https://apps.apple.com/vn/app/tpbank-mobile/id1001881988',
-        android: 'https://play.google.com/store/apps/details?id=vn.tpb.mb.gprsandroid',
+        android: 'intent://main#Intent;scheme=tpbankapp;package=vn.tpb.mb.gprsandroid;end',
       },
       momo: {
-        scheme: 'momo://',
-        ios: 'https://apps.apple.com/vn/app/momo-chuyển-tiền-thanh-toán/id918751511',
-        android: 'https://play.google.com/store/apps/details?id=com.mservice.momotransfer',
+        universal: 'https://nhantien.momo.vn',
+        ios: 'https://apps.apple.com/vn/app/momo/id918751511',
+        android: 'intent://main#Intent;scheme=momo;package=com.mservice.momotransfer;end',
       },
       zalopay: {
-        scheme: 'zalopay://',
-        ios: 'https://apps.apple.com/vn/app/zalopay-chuyển-tiền-thanh-toán/id1229814460',
-        android: 'https://play.google.com/store/apps/details?id=vn.com.vng.zalopay',
+        universal: 'https://social.zalopay.vn',
+        ios: 'https://apps.apple.com/vn/app/zalopay/id1229814460',
+        android: 'intent://main#Intent;scheme=zalopay;package=vn.com.vng.zalopay;end',
       },
       vcb: {
-        scheme: 'vcbdigibank://',
+        universal: 'https://www.vietcombank.com.vn/vi-VN/chuyen-tien',
         ios: 'https://apps.apple.com/vn/app/vietcombank/id907126017',
-        android: 'https://play.google.com/store/apps/details?id=com.VCB',
+        android: 'intent://main#Intent;scheme=vcbdigibank;package=com.VCB;end',
       },
       bidv: {
-        scheme: 'com.bidv.smartbanking://',
+        universal: 'https://smartbanking.bidv.com.vn',
         ios: 'https://apps.apple.com/vn/app/bidv-smartbanking/id1067549928',
-        android: 'https://play.google.com/store/apps/details?id=com.vnpay.bidv',
+        android: 'intent://main#Intent;scheme=bidvsmart;package=com.vnpay.bidv;end',
       },
       techcombank: {
-        scheme: 'tcbmobilebanking://',
+        universal: 'https://tcbs.com.vn',
         ios: 'https://apps.apple.com/vn/app/techcombank-mobile/id1538283967',
-        android: 'https://play.google.com/store/apps/details?id=vn.com.techcombank.bb.app',
+        android: 'intent://main#Intent;scheme=tcbmobile;package=vn.com.techcombank.bb.app;end',
       },
     };
 
     const config = apps[app];
     if (!config) return;
 
-    // Try deep link via hidden iframe (won't navigate away if app isn't installed)
-    const iframe = document.createElement('iframe');
-    iframe.style.display = 'none';
-    iframe.src = config.scheme;
-    document.body.appendChild(iframe);
-
-    // Fallback: if app didn't open in 1.5s, go to app store
     const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent);
-    setTimeout(() => {
-      iframe.remove();
-      // Only fallback if page is still visible (app didn't open)
-      if (!document.hidden) {
-        const storeLink = isIOS ? config.ios : config.android;
-        window.open(storeLink, '_blank');
-      }
-    }, 1500);
+    const isAndroid = /Android/.test(navigator.userAgent);
+
+    if (isAndroid) {
+      // Android intent:// gracefully falls back to Play Store
+      window.location.href = config.android;
+    } else if (isIOS) {
+      // iOS: universal link opens app if installed, else opens in browser
+      window.location.href = config.universal;
+    } else {
+      // Desktop: open bank website
+      window.open(config.universal, '_blank');
+    }
   },
 
   closeQuickAdd() {
