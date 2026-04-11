@@ -274,7 +274,10 @@ const Expense = {
     const selected = this.selectedBankApp === app.appId ? 'selected' : '';
     // autofill=1 means VietQR fills data; TPBank has its own hydro:// deeplink
     const supported = app.autofill === 1 || app.appId === 'tpb';
-    const badge = supported ? '<span style="position:absolute;bottom:-2px;right:-4px;font-size:0.6rem;">✅</span>' : '';
+    const openOnly = app.appId === 'momo'; // MoMo: chỉ mở app
+    let badge = '';
+    if (openOnly) badge = '<span style="position:absolute;bottom:-2px;right:-4px;font-size:0.6rem;" title="Chỉ mở app">⚡</span>';
+    else if (supported) badge = '<span style="position:absolute;bottom:-2px;right:-4px;font-size:0.6rem;">✅</span>';
     return `<button class="bank-picker-item ${selected}" data-id="${app.appId}" onclick="event.stopPropagation();Expense.selectBankApp('${app.appId}')">
       <div style="position:relative">
         <img src="${app.appLogo}" onerror="this.style.display='none'">
@@ -433,6 +436,14 @@ const Expense = {
 
   _openBankDeepLink(amount) {
     const app = this.selectedBankApp;
+
+    // MoMo: chỉ mở app, không truyền data
+    if (app === 'momo') {
+      this.trackRecentBank(app);
+      setTimeout(() => { window.location.href = 'momo://'; }, 100);
+      return;
+    }
+
     let deeplink = `https://dl.vietqr.io/pay?app=${app}`;
 
     if (this.scannedQR && this.scannedQR.accountNo) {
@@ -881,7 +892,7 @@ const Expense = {
     if (cached) {
       try {
         const { data, ts } = JSON.parse(cached);
-        if (Date.now() - ts < 86400000) { this.appList = data; return; }
+        if (Date.now() - ts < 86400000) { this.appList = data; this._injectExtraApps(); return; }
       } catch (e) { }
     }
     try {
@@ -893,9 +904,24 @@ const Expense = {
       const json = await res.json();
       if (json.apps) {
         this.appList = json.apps;
-        localStorage.setItem('xmoni_apps', JSON.stringify({ data: json.apps, ts: Date.now() }));
+        this._injectExtraApps();
+        localStorage.setItem('xmoni_apps', JSON.stringify({ data: this.appList, ts: Date.now() }));
       }
     } catch (e) { console.warn('Cannot load app list:', e); }
+  },
+
+  // Inject apps not in VietQR API (e.g. MoMo — open-app only)
+  _injectExtraApps() {
+    if (!this.appList) return;
+    if (!this.appList.find(a => a.appId === 'momo')) {
+      this.appList.unshift({
+        appId: 'momo',
+        appName: 'MoMo',
+        appLogo: 'https://upload.wikimedia.org/wikipedia/vi/f/fe/MoMo_Logo.png',
+        autofill: 0,
+        monthlyInstall: 999999 // sort to top
+      });
+    }
   },
 
   lookupBank(bin) {
