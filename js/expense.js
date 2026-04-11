@@ -322,7 +322,7 @@ const Expense = {
     let deeplink = `https://dl.vietqr.io/pay?app=${app}`;
     if (this.scannedQR && this.scannedQR.accountNo) {
       const qr = this.scannedQR;
-      deeplink += `&ba=${qr.accountNo}@${qr.bankBin}`;
+      deeplink += `&ba=${qr.accountNo}@${qr.bankCode || qr.bankBin}`;
       if (amount > 0) deeplink += `&am=${amount}`;
       if (qr.addInfo) deeplink += `&tn=${encodeURIComponent(qr.addInfo)}`;
       if (qr.accountName) deeplink += `&bn=${encodeURIComponent(qr.accountName)}`;
