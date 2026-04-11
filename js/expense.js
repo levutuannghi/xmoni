@@ -278,10 +278,13 @@ const Expense = {
   _bankPickerItem(app) {
     const n = app.appName.replace(/[\u200E\u200F]/g, '');
     const selected = this.selectedBankApp === app.appId ? 'selected' : '';
+    // autofill=1 means VietQR fills data; TPBank has its own hydro:// deeplink
+    const supported = app.autofill === 1 || app.appId === 'tpb';
+    const badge = supported ? '<span style="position:absolute;bottom:-2px;right:-4px;font-size:0.6rem;">✅</span>' : '';
     return `<button class="bank-picker-item ${selected}" data-id="${app.appId}" onclick="event.stopPropagation();Expense.selectBankApp('${app.appId}')">
       <div style="position:relative">
         <img src="${app.appLogo}" onerror="this.style.display='none'">
-        <span style="position:absolute;bottom:-2px;right:-4px;font-size:0.6rem;">✅</span>
+        ${badge}
       </div>
       <span>${n}</span>
     </button>`;
@@ -471,10 +474,16 @@ const Expense = {
       const memo = (document.getElementById('qa-memo')?.value || '').trim() || 'XMoni';
 
       if (stk && bank) {
-        deeplink += `&ba=${stk}@${bank.code}`;
-        deeplink += `&am=${amount > 0 ? amount : 0}`;
-        deeplink += `&tn=${encodeURIComponent(memo)}`;
-        deeplink += `&url=${encodeURIComponent('https://levutuannghi.github.io/xmoni/')}`;
+        if (app === 'tpb') {
+          // TPBank uses hydro:// with full EMVCo QR content
+          const qrContent = this._buildEMVCoQR(stk, bankBin, amount, memo);
+          deeplink = `hydro://applink?targetPage=QRPay&source=XMoni&qrContent=${encodeURIComponent(qrContent)}&callbackurl=${encodeURIComponent('https://levutuannghi.github.io/xmoni/')}`;
+        } else {
+          deeplink += `&ba=${stk}@${bank.code}`;
+          deeplink += `&am=${amount > 0 ? amount : 0}`;
+          deeplink += `&tn=${encodeURIComponent(memo)}`;
+          deeplink += `&url=${encodeURIComponent('https://levutuannghi.github.io/xmoni/')}`;
+        }
       }
     }
 
@@ -542,9 +551,8 @@ const Expense = {
         if (result.data === this._lastScannedText) return;
         this._lastScannedText = result.data;
         this.onQRScanned(result.data);
-        // Update status but DON'T stop scanner
-        const s = document.getElementById('qr-scan-status');
-        if (s) { s.textContent = '✅ Đã quét! Có thể quét mã khác hoặc đóng.'; s.style.color = '#00D68F'; }
+        // Auto-close scanner on successful scan
+        this.stopQRScanner();
       }, {
         preferredCamera: 'environment',
         highlightScanRegion: true,
@@ -694,6 +702,31 @@ const Expense = {
   },
 
   // === EMVCo / VietQR parsing ===
+  // Build a complete VietQR EMVCo QR string from fields
+  _buildEMVCoQR(accountNo, bankBin, amount, memo) {
+    const tlv = (tag, val) => tag + val.length.toString().padStart(2, '0') + val;
+
+    let qr = '';
+    qr += tlv('00', '01');                     // Payload format indicator
+    qr += tlv('01', '12');                     // Dynamic QR
+    // Tag 38: VietQR merchant info
+    const guid = tlv('00', 'A000000727');      // VietQR GUID
+    const merchant = tlv('00', bankBin) + tlv('01', accountNo);
+    const tag01 = tlv('01', merchant);
+    qr += tlv('38', guid + tag01 + tlv('02', 'QRIBFTTA')); // Service code
+    qr += tlv('52', '5999');                   // MCC
+    qr += tlv('53', '704');                    // Currency VND
+    if (amount > 0) {
+      qr += tlv('54', amount.toString());      // Amount
+    }
+    qr += tlv('58', 'VN');                     // Country
+    // Tag 62: Additional data (memo)
+    if (memo) {
+      qr += tlv('62', tlv('08', memo));
+    }
+    return this._recalcCRC(qr);
+  },
+
   rebuildQRWithAmount(raw, newAmount) {
     let base = raw.replace(/6304[A-F0-9]{4}$/i, '');
     const amtStr = newAmount.toString();
@@ -705,16 +738,7 @@ const Expense = {
     } else {
       base += tag54;
     }
-    base += '6304';
-    let crc = 0xFFFF;
-    for (let i = 0; i < base.length; i++) {
-      crc ^= base.charCodeAt(i) << 8;
-      for (let j = 0; j < 8; j++) {
-        crc = crc & 0x8000 ? (crc << 1) ^ 0x1021 : crc << 1;
-        crc &= 0xFFFF;
-      }
-    }
-    return base + crc.toString(16).toUpperCase().padStart(4, '0');
+    return this._recalcCRC(base);
   },
 
   rebuildQRWithMemo(raw, newMemo) {
@@ -722,13 +746,12 @@ const Expense = {
     // Tag 62 contains additional data, sub-tag 08 is memo
     const tag62Match = base.match(/62(\d{2})/);
     if (tag62Match) {
+      // Tag 62 exists - replace/add sub-tag 08
       const tag62Start = base.indexOf('62' + tag62Match[1]);
       const tag62Len = parseInt(tag62Match[1]);
       const tag62End = tag62Start + 4 + tag62Len;
       const tag62Content = base.substring(tag62Start + 4, tag62End);
-      // Remove old sub-tag 08
-      let newContent = tag62Content.replace(/08\d{2}[^]*?(?=\d{2}\d{2}|$)/, '');
-      // Re-parse to remove tag 08 properly
+      // Re-parse to rebuild without old tag 08
       const parsed = this.parseEMVCo(tag62Content);
       let rebuilt = '';
       for (const [k, v] of Object.entries(parsed)) {
@@ -739,7 +762,16 @@ const Expense = {
       rebuilt += '08' + newMemo.length.toString().padStart(2, '0') + newMemo;
       const newTag62 = '62' + rebuilt.length.toString().padStart(2, '0') + rebuilt;
       base = base.substring(0, tag62Start) + newTag62 + base.substring(tag62End);
+    } else {
+      // No tag 62 - create it with sub-tag 08
+      const tag08 = '08' + newMemo.length.toString().padStart(2, '0') + newMemo;
+      const tag62 = '62' + tag08.length.toString().padStart(2, '0') + tag08;
+      base += tag62;
     }
+    return this._recalcCRC(base);
+  },
+
+  _recalcCRC(base) {
     base += '6304';
     let crc = 0xFFFF;
     for (let i = 0; i < base.length; i++) {
