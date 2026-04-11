@@ -1168,6 +1168,27 @@ textarea {
   font-size: 1rem;
 }
 
+.qa-header-daily {
+  flex: 1;
+  text-align: center;
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--text-muted);
+  letter-spacing: 0.3px;
+}
+
+.qa-header-daily.safe {
+  color: var(--accent-success);
+}
+
+.qa-header-daily.warning {
+  color: #FFB800;
+}
+
+.qa-header-daily.danger {
+  color: var(--accent-danger);
+}
+
 .qa-header-actions {
   display: flex;
   gap: 4px;
@@ -1359,6 +1380,7 @@ textarea {
   transition: var(--transition);
   user-select: none;
   -webkit-tap-highlight-color: transparent;
+  touch-action: manipulation;
 }
 
 .numpad-btn:active {
@@ -1413,6 +1435,19 @@ textarea {
   font-size: 0.85rem;
   outline: none;
   transition: var(--transition);
+}
+
+.qa-bank-picker-btn {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  cursor: pointer;
+  text-align: left;
+}
+
+.qa-bank-picker-btn:disabled {
+  opacity: 0.6;
+  cursor: default;
 }
 
 .qa-transfer-input:focus {

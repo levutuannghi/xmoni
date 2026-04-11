@@ -118,6 +118,7 @@ const Expense = {
 
         <div class="quick-add-header">
           <h3>Thêm chi tiêu</h3>
+          <span class="qa-header-daily ${dailyClass}">${Utils.formatCompactVND(todaySpent)} / ${Utils.formatCompactVND(dailyAllowance)}</span>
           <button class="btn-icon" onclick="Expense.closeQuickAdd()">✕</button>
         </div>
 
@@ -127,14 +128,6 @@ const Expense = {
       const sel = this.lastCategoryId ? b.id === this.lastCategoryId : false;
       return `<button class="category-chip ${sel ? 'selected' : ''}" style="--chip-color:${b.color}" data-id="${b.id}" onclick="Expense.selectCategory(this)"><span>${b.icon}</span><span>${b.name}</span></button>`;
     }).join('')}
-          </div>
-
-          <div class="qa-daily-bar">
-            <div class="qa-daily-info">
-              <span>Hôm nay: <strong>${Utils.formatCompactVND(todaySpent)}</strong></span>
-              <span>/ ${Utils.formatCompactVND(dailyAllowance)}</span>
-            </div>
-            <div class="qa-daily-progress"><div class="qa-daily-fill ${dailyClass}" style="width:${dailyPct}%"></div></div>
           </div>
 
           <input type="hidden" id="qa-date" value="${today}">
@@ -159,10 +152,11 @@ const Expense = {
           <div class="qa-transfer-fields">
             <div class="qa-transfer-row">
               <span class="qa-transfer-label">🏦 Ngân hàng</span>
-              <select id="qa-bank" class="qa-transfer-input" onchange="Expense.onBankFieldChange()">
-                <option value="">Chọn ngân hàng</option>
-                ${(this.bankList || []).map(b => `<option value="${b.bin}">${b.shortName}</option>`).join('')}
-              </select>
+              <button id="qa-bank-btn" class="qa-transfer-input qa-bank-picker-btn" onclick="Expense.showBankFieldPicker()">
+                <span id="qa-bank-display">Chọn ngân hàng</span>
+                <span class="bank-arrow">▾</span>
+              </button>
+              <input type="hidden" id="qa-bank" value="">
             </div>
             <div class="qa-transfer-row">
               <span class="qa-transfer-label">💳 Số TK</span>
@@ -625,14 +619,14 @@ const Expense = {
     this.scannedQR = { bankBin, accountNo, amount, addInfo, bankName, accountName, bankCode, rawText: text };
 
     // Auto-fill transfer fields
-    const bankSelect = document.getElementById('qa-bank');
-    if (bankSelect && bankBin) {
-      for (let i = 0; i < bankSelect.options.length; i++) {
-        if (bankSelect.options[i].value === bankBin) {
-          bankSelect.selectedIndex = i;
-          break;
-        }
-      }
+    const bankInput = document.getElementById('qa-bank');
+    const bankDisplay = document.getElementById('qa-bank-display');
+    const bankBtn = document.getElementById('qa-bank-btn');
+    if (bankBin) {
+      if (bankInput) bankInput.value = bankBin;
+      if (bankDisplay) bankDisplay.textContent = bankName;
+      if (bankBtn) bankBtn.disabled = true;
+      this.selectedBankBin = bankBin;
     }
 
     const stkInput = document.getElementById('qa-stk');
@@ -643,9 +637,6 @@ const Expense = {
 
     const memoInput = document.getElementById('qa-memo');
     if (memoInput && addInfo) { memoInput.value = addInfo; memoInput.readOnly = true; }
-
-    // Lock bank selector if QR has bank
-    if (bankSelect && bankBin) bankSelect.disabled = true;
 
     // Auto-fill amount + lock numpad if QR has amount
     if (amount > 0) {
@@ -670,8 +661,83 @@ const Expense = {
     Utils.showToast('Đã quét QR!', 'success');
   },
 
-  onBankFieldChange() {
-    // No-op for now, bank dropdown in transfer fields
+  // === Bank Field Picker (transfer field) ===
+  selectedBankBin: null,
+
+  showBankFieldPicker() {
+    if (!this.bankList || this.bankList.length === 0) {
+      this.loadBankList().then(() => this.showBankFieldPicker());
+      return;
+    }
+
+    let overlay = document.getElementById('bank-field-picker-overlay');
+    if (!overlay) {
+      overlay = document.createElement('div');
+      overlay.id = 'bank-field-picker-overlay';
+      overlay.className = 'bank-picker-overlay';
+      document.body.appendChild(overlay);
+    }
+
+    overlay.innerHTML = `
+      <div class="bank-picker-sheet" onclick="event.stopPropagation()">
+        <div class="bank-picker-header">
+          <h3>Chọn ngân hàng</h3>
+          <button class="bank-picker-close" onclick="Expense.closeBankFieldPicker()">✕</button>
+        </div>
+        <div class="bank-picker-search">
+          <input type="text" placeholder="🔍 Tìm kiếm" id="bank-field-search" oninput="Expense.filterBankFields(this.value)">
+        </div>
+        <div class="bank-picker-body" id="bank-field-body">
+          <div class="bank-picker-grid" id="bank-field-grid">
+            <button class="bank-picker-item ${!this.selectedBankBin ? 'selected' : ''}" onclick="event.stopPropagation();Expense.selectBankField('')">
+              <span style="font-size:1.5rem">🚫</span>
+              <span>Không chọn</span>
+            </button>
+            ${this.bankList.map(b => {
+      const sel = this.selectedBankBin === b.bin ? 'selected' : '';
+      return `<button class="bank-picker-item ${sel}" data-bin="${b.bin}" onclick="event.stopPropagation();Expense.selectBankField('${b.bin}')">
+                <img src="${b.logo}" onerror="this.style.display='none'">
+                <span>${b.shortName}</span>
+              </button>`;
+    }).join('')}
+          </div>
+        </div>
+      </div>
+    `;
+
+    overlay.onclick = () => this.closeBankFieldPicker();
+    overlay.classList.add('active');
+    setTimeout(() => document.getElementById('bank-field-search')?.focus(), 300);
+  },
+
+  filterBankFields(query) {
+    const q = query.toLowerCase().trim();
+    const grid = document.getElementById('bank-field-grid');
+    if (!grid) return;
+    grid.querySelectorAll('.bank-picker-item').forEach(item => {
+      const name = item.querySelector('span')?.textContent?.toLowerCase() || '';
+      item.style.display = !q || name.includes(q) ? '' : 'none';
+    });
+  },
+
+  selectBankField(bin) {
+    this.selectedBankBin = bin || null;
+    document.getElementById('qa-bank').value = bin;
+    const display = document.getElementById('qa-bank-display');
+    if (display) {
+      if (bin) {
+        const bank = this.bankList?.find(b => b.bin === bin);
+        display.textContent = bank ? bank.shortName : bin;
+      } else {
+        display.textContent = 'Chọn ngân hàng';
+      }
+    }
+    this.closeBankFieldPicker();
+  },
+
+  closeBankFieldPicker() {
+    const overlay = document.getElementById('bank-field-picker-overlay');
+    if (overlay) overlay.classList.remove('active');
   },
 
   // === Helpers ===
