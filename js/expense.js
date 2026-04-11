@@ -575,13 +575,16 @@ const Expense = {
     }
 
     const stkInput = document.getElementById('qa-stk');
-    if (stkInput && accountNo) stkInput.value = accountNo;
+    if (stkInput && accountNo) { stkInput.value = accountNo; stkInput.readOnly = true; }
 
     const recipientInput = document.getElementById('qa-recipient');
     if (recipientInput && accountName) recipientInput.value = accountName;
 
     const memoInput = document.getElementById('qa-memo');
-    if (memoInput && addInfo) memoInput.value = addInfo;
+    if (memoInput && addInfo) { memoInput.value = addInfo; memoInput.readOnly = true; }
+
+    // Lock bank selector if QR has bank
+    if (bankSelect && bankBin) bankSelect.disabled = true;
 
     // Auto-fill amount + lock numpad if QR has amount
     if (amount > 0) {
