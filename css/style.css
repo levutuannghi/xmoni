@@ -37,7 +37,9 @@
 }
 
 /* === Reset & Base === */
-*, *::before, *::after {
+*,
+*::before,
+*::after {
   box-sizing: border-box;
   margin: 0;
   padding: 0;
@@ -58,7 +60,10 @@ body {
   -webkit-font-smoothing: antialiased;
 }
 
-input, button, select, textarea {
+input,
+button,
+select,
+textarea {
   font-family: inherit;
   font-size: inherit;
 }
@@ -84,7 +89,9 @@ input, button, select, textarea {
 }
 
 @keyframes spin {
-  to { transform: rotate(360deg); }
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 .loader-text {
@@ -112,8 +119,15 @@ input, button, select, textarea {
 }
 
 @keyframes float {
-  0%, 100% { transform: translateY(0); }
-  50% { transform: translateY(-10px); }
+
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+
+  50% {
+    transform: translateY(-10px);
+  }
 }
 
 .login-title {
@@ -162,6 +176,24 @@ input, button, select, textarea {
 .btn-google img {
   width: 24px;
   height: 24px;
+}
+
+.btn-demo {
+  margin-top: 16px;
+  padding: 12px 28px;
+  background: transparent;
+  border: 1px solid var(--border-color);
+  color: var(--text-secondary);
+  border-radius: var(--radius-xl);
+  font-size: 0.9rem;
+  cursor: pointer;
+  transition: var(--transition);
+}
+
+.btn-demo:hover {
+  background: rgba(255, 255, 255, 0.05);
+  color: var(--text-primary);
+  border-color: var(--accent-primary);
 }
 
 /* === Main App Layout === */
@@ -248,8 +280,15 @@ input, button, select, textarea {
 }
 
 @keyframes fadeIn {
-  from { opacity: 0; transform: translateY(8px); }
-  to { opacity: 1; transform: translateY(0); }
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
 /* === Bottom Tabs === */
@@ -433,9 +472,17 @@ input, button, select, textarea {
   font-weight: 700;
 }
 
-.dash-total-value.spent { color: var(--accent-warning); }
-.dash-total-value.remaining { color: var(--accent-success); }
-.dash-total-value.overspent { color: var(--accent-danger); }
+.dash-total-value.spent {
+  color: var(--accent-warning);
+}
+
+.dash-total-value.remaining {
+  color: var(--accent-success);
+}
+
+.dash-total-value.overspent {
+  color: var(--accent-danger);
+}
 
 /* Dashboard Cards */
 .dash-cards {
@@ -490,9 +537,17 @@ input, button, select, textarea {
   min-width: 2px;
 }
 
-.dash-progress-bar.safe { background: linear-gradient(90deg, var(--accent-success), #00B377); }
-.dash-progress-bar.warning { background: linear-gradient(90deg, var(--accent-warning), #FF9500); }
-.dash-progress-bar.danger { background: linear-gradient(90deg, var(--accent-danger), #E63946); }
+.dash-progress-bar.safe {
+  background: linear-gradient(90deg, var(--accent-success), #00B377);
+}
+
+.dash-progress-bar.warning {
+  background: linear-gradient(90deg, var(--accent-warning), #FF9500);
+}
+
+.dash-progress-bar.danger {
+  background: linear-gradient(90deg, var(--accent-danger), #E63946);
+}
 
 .dash-stats {
   display: flex;
@@ -523,10 +578,21 @@ input, button, select, textarea {
   font-size: 0.9rem;
 }
 
-.dash-stat-value.spent { color: var(--text-secondary); }
-.dash-stat-value.remaining { color: var(--accent-success); }
-.dash-stat-value.overspent { color: var(--accent-danger); }
-.dash-stat-value.daily { color: var(--accent-primary); }
+.dash-stat-value.spent {
+  color: var(--text-secondary);
+}
+
+.dash-stat-value.remaining {
+  color: var(--accent-success);
+}
+
+.dash-stat-value.overspent {
+  color: var(--accent-danger);
+}
+
+.dash-stat-value.daily {
+  color: var(--accent-primary);
+}
 
 .dash-carryover {
   margin-top: 8px;
@@ -860,7 +926,9 @@ input, button, select, textarea {
 }
 
 /* === Modal === */
-#category-modal, #expense-modal, #setup-guide-modal {
+#category-modal,
+#expense-modal,
+#setup-guide-modal {
   position: fixed;
   inset: 0;
   z-index: 1000;
@@ -869,7 +937,9 @@ input, button, select, textarea {
   justify-content: center;
 }
 
-#category-modal.active, #expense-modal.active, #setup-guide-modal.active {
+#category-modal.active,
+#expense-modal.active,
+#setup-guide-modal.active {
   display: flex;
 }
 
@@ -932,8 +1002,13 @@ input, button, select, textarea {
 }
 
 @keyframes slideUp {
-  from { transform: translateY(100%); }
-  to { transform: translateY(0); }
+  from {
+    transform: translateY(100%);
+  }
+
+  to {
+    transform: translateY(0);
+  }
 }
 
 /* === Form Elements === */
@@ -1288,9 +1363,17 @@ input, button, select, textarea {
   font-size: 1.1rem;
 }
 
-.toast-success .toast-icon { color: var(--accent-success); }
-.toast-error .toast-icon { color: var(--accent-danger); }
-.toast-info .toast-icon { color: var(--accent-primary); }
+.toast-success .toast-icon {
+  color: var(--accent-success);
+}
+
+.toast-error .toast-icon {
+  color: var(--accent-danger);
+}
+
+.toast-info .toast-icon {
+  color: var(--accent-primary);
+}
 
 /* === Empty State === */
 .empty-state {

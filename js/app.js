@@ -46,8 +46,30 @@ const App = {
     // Called on logout
     onLogout() {
         this.state.data = null;
+        Drive.demoMode = false;
         document.getElementById('main-app').style.display = 'none';
         document.getElementById('login-screen').style.display = 'flex';
+    },
+
+    // Demo mode: skip Google login, use localStorage
+    async enterDemoMode() {
+        Drive.demoMode = true;
+        document.getElementById('app-loading').style.display = 'flex';
+        document.getElementById('login-screen').style.display = 'none';
+
+        this.state.data = await Drive.loadData();
+
+        // Set demo user info
+        const userInfo = document.getElementById('user-info');
+        userInfo.innerHTML = `
+            <span class="user-avatar" style="display:flex;align-items:center;justify-content:center;background:var(--accent-primary);font-size:1rem;width:32px;height:32px;border-radius:50%">🧪</span>
+            <span class="user-name">Demo Mode</span>
+        `;
+
+        document.getElementById('app-loading').style.display = 'none';
+        document.getElementById('main-app').style.display = 'flex';
+        this.switchView('dashboard');
+        Utils.showToast('Chế độ demo — dữ liệu lưu trên máy', 'info');
     },
 
     // Switch between views

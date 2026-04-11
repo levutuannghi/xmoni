@@ -4,7 +4,9 @@
 
 const Drive = {
     FILE_NAME: 'xmoni_data.json',
+    STORAGE_KEY: 'xmoni_demo_data',
     fileId: null,
+    demoMode: false,
 
     // Default empty data
     getDefaultData() {
@@ -15,8 +17,18 @@ const Drive = {
         };
     },
 
-    // Find or create xmoni_data.json in user's Drive
+    // Find or create xmoni_data.json in user's Drive (or localStorage in demo mode)
     async loadData() {
+        // Demo mode: use localStorage
+        if (this.demoMode) {
+            const saved = localStorage.getItem(this.STORAGE_KEY);
+            if (saved) {
+                try { return this.migrateData(JSON.parse(saved)); }
+                catch (e) { /* corrupted, reset */ }
+            }
+            return this.getDefaultData();
+        }
+
         try {
             // Search for existing file
             const searchRes = await fetch(
@@ -71,8 +83,13 @@ const Drive = {
         return result;
     },
 
-    // Save data to Drive (update existing file)
+    // Save data to Drive (update existing file) or localStorage in demo mode
     async saveData(data) {
+        if (this.demoMode) {
+            localStorage.setItem(this.STORAGE_KEY, JSON.stringify(data));
+            return;
+        }
+
         if (!this.fileId) {
             await this.createFile(data);
             return;
