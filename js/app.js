@@ -18,9 +18,17 @@ const App = {
         document.getElementById('login-screen').style.display = 'none';
         document.getElementById('main-app').style.display = 'none';
 
+        // Check if last session was demo mode
+        const lastMode = localStorage.getItem('xmoni_login_mode');
+        if (lastMode === 'demo') {
+            await this.enterDemoMode(true);
+            return;
+        }
+
         const isLoggedIn = await Auth.init();
 
         if (isLoggedIn) {
+            localStorage.setItem('xmoni_login_mode', 'google');
             await this.onLoginSuccess();
         } else {
             document.getElementById('app-loading').style.display = 'none';
@@ -47,13 +55,15 @@ const App = {
     onLogout() {
         this.state.data = null;
         Drive.demoMode = false;
+        localStorage.removeItem('xmoni_login_mode');
         document.getElementById('main-app').style.display = 'none';
         document.getElementById('login-screen').style.display = 'flex';
     },
 
     // Demo mode: skip Google login, use localStorage
-    async enterDemoMode() {
+    async enterDemoMode(silent = false) {
         Drive.demoMode = true;
+        localStorage.setItem('xmoni_login_mode', 'demo');
         document.getElementById('app-loading').style.display = 'flex';
         document.getElementById('login-screen').style.display = 'none';
 
