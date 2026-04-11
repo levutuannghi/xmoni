@@ -3,25 +3,25 @@
 // ============================================
 
 const Expense = {
-    inputAmount: '',
+  inputAmount: '',
 
-    // Render expense view
-    render() {
-        const container = document.getElementById('view-expenses');
-        const data = App.state.data;
-        const monthKey = App.state.selectedMonth;
-        const monthExpenses = data.expenses
-            .filter(e => Utils.getMonthKey(e.date) === monthKey)
-            .sort((a, b) => b.date.localeCompare(a.date) || b.id.localeCompare(a.id));
+  // Render expense view
+  render() {
+    const container = document.getElementById('view-expenses');
+    const data = App.state.data;
+    const monthKey = App.state.selectedMonth;
+    const monthExpenses = data.expenses
+      .filter(e => Utils.getMonthKey(e.date) === monthKey)
+      .sort((a, b) => b.date.localeCompare(a.date) || b.id.localeCompare(a.id));
 
-        // Group by date
-        const grouped = {};
-        monthExpenses.forEach(e => {
-            if (!grouped[e.date]) grouped[e.date] = [];
-            grouped[e.date].push(e);
-        });
+    // Group by date
+    const grouped = {};
+    monthExpenses.forEach(e => {
+      if (!grouped[e.date]) grouped[e.date] = [];
+      grouped[e.date].push(e);
+    });
 
-        container.innerHTML = `
+    container.innerHTML = `
       <div class="month-nav">
         <button class="btn-icon" onclick="Expense.prevMonth()">‹</button>
         <h2 class="month-title">${Utils.formatMonth(monthKey)}</h2>
@@ -48,8 +48,8 @@ const Expense = {
               <span class="expense-date-total">${Utils.formatVND(expenses.reduce((s, e) => s + e.amount, 0))}</span>
             </div>
             ${expenses.map(e => {
-            const budget = data.budgets.find(b => b.id === e.budgetId);
-            return `
+      const budget = data.budgets.find(b => b.id === e.budgetId);
+      return `
                 <div class="expense-item" data-id="${e.id}">
                   <div class="expense-item-left">
                     <span class="expense-item-icon" style="background: ${budget ? budget.color : '#666'}">${budget ? budget.icon : '?'}</span>
@@ -64,26 +64,26 @@ const Expense = {
                   </div>
                 </div>
               `;
-        }).join('')}
+    }).join('')}
           </div>
         `).join('')}
       </div>
     `;
-    },
+  },
 
-    // Show quick add modal
-    showQuickAdd() {
-        const data = App.state.data;
-        if (data.budgets.length === 0) {
-            Utils.showToast('Tạo danh mục chi tiêu trước!', 'error');
-            App.switchView('budgets');
-            return;
-        }
+  // Show quick add modal
+  showQuickAdd() {
+    const data = App.state.data;
+    if (data.budgets.length === 0) {
+      Utils.showToast('Tạo danh mục chi tiêu trước!', 'error');
+      App.switchView('budgets');
+      return;
+    }
 
-        this.inputAmount = '';
-        const modal = document.getElementById('expense-modal');
+    this.inputAmount = '';
+    const modal = document.getElementById('expense-modal');
 
-        modal.innerHTML = `
+    modal.innerHTML = `
       <div class="modal-overlay" onclick="Expense.closeQuickAdd()"></div>
       <div class="modal-content quick-add-modal slide-up">
         <div class="quick-add-header">
@@ -104,6 +104,7 @@ const Expense = {
         </div>
 
         <div class="quick-add-display">
+          <div class="qa-input-hint">Nhập số nghìn (x1.000)</div>
           <span class="qa-amount" id="qa-amount">0đ</span>
         </div>
 
@@ -116,102 +117,137 @@ const Expense = {
         </div>
 
         <div class="numpad">
-          ${['1', '2', '3', '4', '5', '6', '7', '8', '9', '000', '0', '⌫'].map(key => `
-            <button class="numpad-btn ${key === '⌫' ? 'numpad-delete' : ''}" 
-              onclick="Expense.numpadPress('${key}')">${key}</button>
+          ${['1', '2', '3', '4', '5', '6', '7', '8', '9', '.', '0', '⌫'].map(key => `
+            <button class="numpad-btn ${key === '⌫' ? 'numpad-delete' : ''} ${key === '.' ? 'numpad-dot' : ''}" 
+              onclick="Expense.numpadPress('${key}')">${key === '.' ? ',5' : key}</button>
           `).join('')}
         </div>
 
         <button class="btn-save-expense" id="btn-save-expense" onclick="Expense.saveExpense()" disabled>
           Lưu chi tiêu
         </button>
+
+        <div class="quick-pay-section">
+          <div class="quick-pay-label">Mở app thanh toán</div>
+          <div class="quick-pay-buttons">
+            <a class="quick-pay-btn" href="https://pay.apple.com" onclick="Expense.openPayApp('apple')">🍎 Apple Pay</a>
+            <a class="quick-pay-btn" href="tpbank://transfer" onclick="Expense.openPayApp('tpbank')">🏦 TPBank</a>
+            <a class="quick-pay-btn" href="momo://transfer" onclick="Expense.openPayApp('momo')">💜 MoMo</a>
+            <a class="quick-pay-btn" href="zalopay://transfer" onclick="Expense.openPayApp('zalopay')">💙 ZaloPay</a>
+            <a class="quick-pay-btn" href="vcbdigibank://transfer" onclick="Expense.openPayApp('vcb')">🟢 VCB</a>
+          </div>
+        </div>
       </div>
     `;
 
-        modal.classList.add('active');
-        // Focus note after render
-        setTimeout(() => document.getElementById('qa-note')?.focus(), 300);
-    },
+    modal.classList.add('active');
+    // Focus note after render
+    setTimeout(() => document.getElementById('qa-note')?.focus(), 300);
+  },
 
-    // Category selection
-    selectCategory(btn) {
-        document.querySelectorAll('.category-chip').forEach(c => c.classList.remove('selected'));
-        btn.classList.add('selected');
-    },
+  // Category selection
+  selectCategory(btn) {
+    document.querySelectorAll('.category-chip').forEach(c => c.classList.remove('selected'));
+    btn.classList.add('selected');
+  },
 
-    // Numpad input
-    numpadPress(key) {
-        if (key === '⌫') {
-            this.inputAmount = this.inputAmount.slice(0, -1);
-        } else {
-            if (this.inputAmount.length >= 12) return; // Max 12 digits
-            this.inputAmount += key;
-        }
+  // Numpad input (in thousands - x1000)
+  numpadPress(key) {
+    if (key === '⌫') {
+      this.inputAmount = this.inputAmount.slice(0, -1);
+    } else if (key === '.') {
+      // ",5" button = add 500đ (half thousand)
+      if (!this.inputAmount.includes('.')) {
+        this.inputAmount += this.inputAmount ? '.5' : '0.5';
+      }
+    } else {
+      if (this.inputAmount.includes('.')) return; // No more digits after decimal
+      if (this.inputAmount.length >= 7) return; // Max 7 digits = 9,999,000
+      this.inputAmount += key;
+    }
 
-        const amount = parseInt(this.inputAmount) || 0;
-        const display = document.getElementById('qa-amount');
-        display.textContent = Utils.formatVND(amount);
-        display.classList.toggle('has-value', amount > 0);
+    const parsed = parseFloat(this.inputAmount) || 0;
+    const realAmount = Math.round(parsed * 1000);
+    const display = document.getElementById('qa-amount');
+    display.textContent = Utils.formatVND(realAmount);
+    display.classList.toggle('has-value', realAmount > 0);
 
-        document.getElementById('btn-save-expense').disabled = amount === 0;
-    },
+    document.getElementById('btn-save-expense').disabled = realAmount === 0;
+  },
 
-    // Save expense
-    saveExpense() {
-        const amount = parseInt(this.inputAmount) || 0;
-        if (amount === 0) return;
+  // Save expense
+  saveExpense() {
+    const parsed = parseFloat(this.inputAmount) || 0;
+    const amount = Math.round(parsed * 1000);
+    if (amount === 0) return;
 
-        const selectedChip = document.querySelector('.category-chip.selected');
-        if (!selectedChip) {
-            Utils.showToast('Chọn danh mục', 'error');
-            return;
-        }
+    const selectedChip = document.querySelector('.category-chip.selected');
+    if (!selectedChip) {
+      Utils.showToast('Chọn danh mục', 'error');
+      return;
+    }
 
-        const budgetId = selectedChip.dataset.id;
-        const date = document.getElementById('qa-date').value;
-        const note = document.getElementById('qa-note').value.trim();
+    const budgetId = selectedChip.dataset.id;
+    const date = document.getElementById('qa-date').value;
+    const note = document.getElementById('qa-note').value.trim();
 
-        const expense = {
-            id: Utils.generateId(),
-            date,
-            budgetId,
-            amount,
-            note,
-        };
+    const expense = {
+      id: Utils.generateId(),
+      date,
+      budgetId,
+      amount,
+      note,
+    };
 
-        App.state.data.expenses.push(expense);
-        Drive.queueSave(App.state.data);
+    App.state.data.expenses.push(expense);
+    Drive.queueSave(App.state.data);
 
-        this.closeQuickAdd();
-        Utils.showToast(`Đã lưu -${Utils.formatVND(amount)}`);
+    this.closeQuickAdd();
+    Utils.showToast(`Đã lưu -${Utils.formatVND(amount)}`, 'success');
 
-        // Refresh current view
-        if (App.state.currentView === 'expenses') this.render();
-        if (App.state.currentView === 'dashboard') Dashboard.render();
-    },
+    // Refresh current view
+    if (App.state.currentView === 'expenses') this.render();
+    if (App.state.currentView === 'dashboard') Dashboard.render();
+  },
 
-    // Delete expense
-    deleteExpense(id) {
-        if (!confirm('Xóa khoản chi này?')) return;
+  // Delete expense
+  deleteExpense(id) {
+    if (!confirm('Xóa khoản chi này?')) return;
 
-        App.state.data.expenses = App.state.data.expenses.filter(e => e.id !== id);
-        Drive.queueSave(App.state.data);
-        this.render();
-        Utils.showToast('Đã xóa');
-    },
+    App.state.data.expenses = App.state.data.expenses.filter(e => e.id !== id);
+    Drive.queueSave(App.state.data);
+    this.render();
+    Utils.showToast('Đã xóa');
+  },
 
-    closeQuickAdd() {
-        document.getElementById('expense-modal').classList.remove('active');
-        this.inputAmount = '';
-    },
+  // Open banking/payment app via deep link
+  openPayApp(app) {
+    const deepLinks = {
+      apple: 'shoebox://',       // Apple Wallet
+      tpbank: 'tpbank://',
+      momo: 'momo://',
+      zalopay: 'zalopay://',
+      vcb: 'vcbdigibank://',
+    };
+    const link = deepLinks[app];
+    if (link) {
+      // Try deep link, will open app on mobile if installed
+      window.location.href = link;
+    }
+  },
 
-    prevMonth() {
-        App.state.selectedMonth = Utils.getPrevMonthKey(App.state.selectedMonth);
-        this.render();
-    },
+  closeQuickAdd() {
+    document.getElementById('expense-modal').classList.remove('active');
+    this.inputAmount = '';
+  },
 
-    nextMonth() {
-        App.state.selectedMonth = Utils.getNextMonthKey(App.state.selectedMonth);
-        this.render();
-    },
+  prevMonth() {
+    App.state.selectedMonth = Utils.getPrevMonthKey(App.state.selectedMonth);
+    this.render();
+  },
+
+  nextMonth() {
+    App.state.selectedMonth = Utils.getNextMonthKey(App.state.selectedMonth);
+    this.render();
+  },
 };

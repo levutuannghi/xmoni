@@ -1150,7 +1150,15 @@ textarea {
 
 .quick-add-display {
   text-align: center;
-  padding: 16px 0;
+  padding: 12px 0;
+}
+
+.qa-input-hint {
+  font-size: 0.7rem;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  margin-bottom: 4px;
 }
 
 .qa-amount {
@@ -1245,6 +1253,55 @@ textarea {
 
 .numpad-delete:hover {
   background: rgba(255, 71, 87, 0.2);
+}
+
+.numpad-dot {
+  font-size: 1rem;
+  color: var(--text-secondary);
+}
+
+/* Quick Pay Buttons */
+.quick-pay-section {
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid var(--border-color);
+}
+
+.quick-pay-label {
+  font-size: 0.7rem;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  margin-bottom: 8px;
+  text-align: center;
+}
+
+.quick-pay-buttons {
+  display: flex;
+  gap: 8px;
+  justify-content: center;
+  flex-wrap: wrap;
+}
+
+.quick-pay-btn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 14px;
+  background: var(--bg-glass);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-xl);
+  color: var(--text-secondary);
+  font-size: 0.8rem;
+  cursor: pointer;
+  transition: var(--transition);
+  text-decoration: none;
+}
+
+.quick-pay-btn:hover {
+  background: rgba(255, 255, 255, 0.1);
+  color: var(--text-primary);
+  border-color: var(--accent-primary);
 }
 
 .btn-save-expense {
