@@ -5,6 +5,7 @@
 const Expense = {
   inputAmount: '',
   lastCategoryId: localStorage.getItem('xmoni_last_category') || null,
+  scannedQR: null, // stores parsed QR data after scan
 
   // Render expense view
   render() {
@@ -72,7 +73,7 @@ const Expense = {
     `;
   },
 
-  // Show quick add modal
+  // Show quick add modal - COMPACT layout for iPhone
   showQuickAdd() {
     const data = App.state.data;
     if (data.budgets.length === 0) {
@@ -82,9 +83,10 @@ const Expense = {
     }
 
     this.inputAmount = '';
+    this.scannedQR = null;
     const modal = document.getElementById('expense-modal');
 
-    // Calculate daily spending info
+    // Calculate daily spending
     const monthKey = Utils.getCurrentMonthKey();
     const today = Utils.getToday();
     const totalDays = Utils.getDaysInMonth(monthKey);
@@ -97,23 +99,25 @@ const Expense = {
       totalCarryover += Budget.calculateCarryovers(monthKey)[b.id] || 0;
       totalSpent += Budget.getTotalSpent(monthKey, b.id);
     });
-    todaySpent = data.expenses
-      .filter(e => e.date === today)
-      .reduce((s, e) => s + e.amount, 0);
+    todaySpent = data.expenses.filter(e => e.date === today).reduce((s, e) => s + e.amount, 0);
 
     const totalRemaining = totalBudget + totalCarryover - totalSpent;
     const dailyRaw = remainingDays > 0 ? totalRemaining / remainingDays : 0;
     const dailyBase = totalDays > 0 ? totalBudget / totalDays : 0;
     const dailyAllowance = Math.max(0, Math.round(Math.min(dailyRaw, dailyBase)));
-    const dailyProgress = dailyAllowance > 0 ? Math.min((todaySpent / dailyAllowance) * 100, 100) : 0;
-    const dailyClass = dailyProgress > 85 ? 'danger' : dailyProgress > 60 ? 'warning' : 'safe';
+    const dailyPct = dailyAllowance > 0 ? Math.min((todaySpent / dailyAllowance) * 100, 100) : 0;
+    const dailyClass = dailyPct > 85 ? 'danger' : dailyPct > 60 ? 'warning' : 'safe';
 
     modal.innerHTML = `
       <div class="modal-overlay" onclick="Expense.closeQuickAdd()"></div>
       <div class="modal-content quick-add-modal slide-up">
+
         <div class="quick-add-header">
           <h3>Thêm chi tiêu</h3>
-          <button class="btn-icon" onclick="Expense.closeQuickAdd()">✕</button>
+          <div class="qa-header-actions">
+            <button class="btn-icon" onclick="Expense.startQRScanner()" title="Quét QR">📷</button>
+            <button class="btn-icon" onclick="Expense.closeQuickAdd()">✕</button>
+          </div>
         </div>
 
         <div class="qa-daily-bar">
@@ -121,86 +125,54 @@ const Expense = {
             <span>Hôm nay: <strong>${Utils.formatCompactVND(todaySpent)}</strong></span>
             <span>/ ${Utils.formatCompactVND(dailyAllowance)}</span>
           </div>
-          <div class="qa-daily-progress"><div class="qa-daily-fill ${dailyClass}" style="width:${dailyProgress}%"></div></div>
+          <div class="qa-daily-progress"><div class="qa-daily-fill ${dailyClass}" style="width:${dailyPct}%"></div></div>
         </div>
+
+        <div id="qr-scanner-container"></div>
+        <div id="qr-scan-banner"></div>
 
         <div class="quick-add-categories" id="qa-categories">
-          ${data.budgets.map((b) => {
-      const isSelected = this.lastCategoryId ? b.id === this.lastCategoryId : false;
-      return `
-            <button class="category-chip ${isSelected ? 'selected' : ''}" 
-              style="--chip-color: ${b.color}"
-              data-id="${b.id}"
-              onclick="Expense.selectCategory(this)">
-              <span>${b.icon}</span>
-              <span>${b.name}</span>
-            </button>
-          `;
+          ${data.budgets.map(b => {
+      const sel = this.lastCategoryId ? b.id === this.lastCategoryId : false;
+      return `<button class="category-chip ${sel ? 'selected' : ''}" style="--chip-color:${b.color}" data-id="${b.id}" onclick="Expense.selectCategory(this)"><span>${b.icon}</span><span>${b.name}</span></button>`;
     }).join('')}
-          ${!this.lastCategoryId || !data.budgets.find(b => b.id === this.lastCategoryId) ? `
-            <script>document.querySelector('.category-chip')?.classList.add('selected')</script>
-          ` : ''}
         </div>
 
-        <div class="quick-add-display">
-          <div class="qa-input-hint">Nhập số nghìn (x1.000)</div>
+        <input type="hidden" id="qa-date" value="${today}">
+        <input type="hidden" id="qa-note" value="">
+
+        <div class="quick-add-display compact">
           <span class="qa-amount" id="qa-amount">0đ</span>
         </div>
 
-        <div class="quick-add-date">
-          <input type="date" id="qa-date" value="${Utils.getToday()}" max="${Utils.getToday()}">
-        </div>
-
-        <div class="quick-add-note">
-          <input type="text" id="qa-note" placeholder="Ghi chú (không bắt buộc)" maxlength="100">
-        </div>
-
         <div class="preset-amounts">
-          ${[10, 15, 20, 25, 30, 50, 100, 200].map(v => `
-            <button class="preset-btn" onclick="Expense.presetAmount(${v})">${v}k</button>
-          `).join('')}
+          ${[10, 15, 20, 25, 30, 50, 100, 200].map(v =>
+      `<button class="preset-btn" onclick="Expense.presetAmount(${v})">${v}k</button>`
+    ).join('')}
         </div>
 
-        <div class="numpad">
-          ${['1', '2', '3', '4', '5', '6', '7', '8', '9', '.', '0', '⌫'].map(key => `
-            <button class="numpad-btn ${key === '⌫' ? 'numpad-delete' : ''} ${key === '.' ? 'numpad-dot' : ''}" 
-              onclick="Expense.numpadPress('${key}')">${key === '.' ? ',5' : key}</button>
-          `).join('')}
+        <div class="numpad compact">
+          ${['1', '2', '3', '4', '5', '6', '7', '8', '9', '.', '0', '⌫'].map(key =>
+      `<button class="numpad-btn ${key === '⌫' ? 'numpad-delete' : ''} ${key === '.' ? 'numpad-dot' : ''}" onclick="Expense.numpadPress('${key}')">${key === '.' ? ',5' : key}</button>`
+    ).join('')}
         </div>
 
-        <button class="btn-save-expense" id="btn-save-expense" onclick="Expense.saveExpense()" disabled>
-          Lưu chi tiêu
-        </button>
-
-        <div class="quick-pay-section">
-          <div class="quick-pay-label">Lưu & mở app thanh toán</div>
-          <div class="quick-pay-buttons">
-            <button class="quick-pay-btn" onclick="Expense.saveAndPay('tpb')">🏦 TPBank</button>
-            <button class="quick-pay-btn" onclick="Expense.saveAndPay('vcb')">🟢 VCB</button>
-            <button class="quick-pay-btn" onclick="Expense.saveAndPay('tcb')">🔴 TCB</button>
-            <button class="quick-pay-btn" onclick="Expense.saveAndPay('bidv')">🔵 BIDV</button>
-            <button class="quick-pay-btn" onclick="Expense.saveAndPay('mb')">⚫ MB</button>
-            <button class="quick-pay-btn" onclick="Expense.saveAndPay('acb')">🟡 ACB</button>
-            <button class="quick-pay-btn" onclick="Expense.saveAndPay('vpb')">🟣 VPB</button>
-            <button class="quick-pay-btn" onclick="Expense.saveAndPay('vba')">🟤 Agri</button>
+        <div class="qa-bottom-row">
+          <button class="btn-save-expense" id="btn-save-expense" onclick="Expense.saveExpense()" disabled>💾 Lưu</button>
+          <div class="qa-bank-row">
+            <button class="quick-pay-btn mini" onclick="Expense.saveAndPay('tpb')" title="TPBank">🏦</button>
+            <button class="quick-pay-btn mini" onclick="Expense.saveAndPay('vcb')" title="VCB">🟢</button>
+            <button class="quick-pay-btn mini" onclick="Expense.saveAndPay('tcb')" title="TCB">🔴</button>
+            <button class="quick-pay-btn mini" onclick="Expense.saveAndPay('bidv')" title="BIDV">🔵</button>
+            <button class="quick-pay-btn mini" onclick="Expense.saveAndPay('mb')" title="MB">⚫</button>
+            <button class="quick-pay-btn mini" onclick="Expense.saveAndPay('acb')" title="ACB">�</button>
           </div>
         </div>
 
-        <div class="vietqr-section">
-          <div class="quick-pay-label">VietQR</div>
-          <div class="vietqr-actions">
-            <button class="quick-pay-btn vietqr-toggle" onclick="Expense.startQRScanner()">📷 Quét mã QR</button>
-            <button class="quick-pay-btn vietqr-toggle" onclick="Expense.toggleVietQR()">📱 Tạo mã QR</button>
-          </div>
-          <div id="qr-scanner-container"></div>
-          <div class="vietqr-form" id="vietqr-form"></div>
-          <div class="vietqr-result" id="vietqr-result"></div>
-        </div>
       </div>
     `;
 
     modal.classList.add('active');
-    // Auto-select first if none selected
     if (!modal.querySelector('.category-chip.selected')) {
       modal.querySelector('.category-chip')?.classList.add('selected');
     }
@@ -214,7 +186,7 @@ const Expense = {
     localStorage.setItem('xmoni_last_category', btn.dataset.id);
   },
 
-  // Preset amount - one tap entry (in thousands)
+  // Preset amount - one tap
   presetAmount(k) {
     this.inputAmount = k.toString();
     const realAmount = k * 1000;
@@ -222,32 +194,28 @@ const Expense = {
     display.textContent = Utils.formatVND(realAmount);
     display.classList.add('has-value');
     document.getElementById('btn-save-expense').disabled = false;
-    // Highlight the selected preset
     document.querySelectorAll('.preset-btn').forEach(b => b.classList.remove('active'));
     event.target.classList.add('active');
   },
 
-  // Numpad input (in thousands - x1000)
+  // Numpad input (x1000)
   numpadPress(key) {
     if (key === '⌫') {
       this.inputAmount = this.inputAmount.slice(0, -1);
     } else if (key === '.') {
-      // ",5" button = add 500đ (half thousand)
       if (!this.inputAmount.includes('.')) {
         this.inputAmount += this.inputAmount ? '.5' : '0.5';
       }
     } else {
-      if (this.inputAmount.includes('.')) return; // No more digits after decimal
-      if (this.inputAmount.length >= 7) return; // Max 7 digits = 9,999,000
+      if (this.inputAmount.includes('.')) return;
+      if (this.inputAmount.length >= 7) return;
       this.inputAmount += key;
     }
-
     const parsed = parseFloat(this.inputAmount) || 0;
     const realAmount = Math.round(parsed * 1000);
     const display = document.getElementById('qa-amount');
     display.textContent = Utils.formatVND(realAmount);
     display.classList.toggle('has-value', realAmount > 0);
-
     document.getElementById('btn-save-expense').disabled = realAmount === 0;
   },
 
@@ -263,251 +231,25 @@ const Expense = {
       return;
     }
 
-    const budgetId = selectedChip.dataset.id;
-    const date = document.getElementById('qa-date').value;
-    const note = document.getElementById('qa-note').value.trim();
-
     const expense = {
       id: Utils.generateId(),
-      date,
-      budgetId,
+      date: document.getElementById('qa-date').value,
+      budgetId: selectedChip.dataset.id,
       amount,
-      note,
+      note: (document.getElementById('qa-note').value || '').trim(),
     };
 
     App.state.data.expenses.push(expense);
     Drive.queueSave(App.state.data);
-
     this.closeQuickAdd();
     Utils.showToast(`Đã lưu -${Utils.formatVND(amount)}`, 'success');
-
-    // Refresh current view
     if (App.state.currentView === 'expenses') this.render();
     if (App.state.currentView === 'dashboard') Dashboard.render();
-  },
-
-  // VietQR integration
-  toggleVietQR() {
-    const form = document.getElementById('vietqr-form');
-    const saved = JSON.parse(localStorage.getItem('xmoni_vietqr') || '{}');
-    form.innerHTML = `
-      <div class="vietqr-inputs">
-        <select id="vqr-bank" class="vqr-input">
-          <option value="">Chọn ngân hàng</option>
-          ${[
-        ['970415', 'VietinBank'], ['970418', 'BIDV'], ['970436', 'Vietcombank'],
-        ['970407', 'Techcombank'], ['970422', 'MB Bank'], ['970416', 'ACB'],
-        ['970432', 'VPBank'], ['970405', 'Agribank'], ['970423', 'TPBank'],
-        ['970448', 'OCB'], ['970437', 'HDBank'], ['970454', 'VIB'],
-        ['970449', 'LPBank'], ['970443', 'SHB'], ['970431', 'Eximbank'],
-      ].map(([id, name]) => `<option value="${id}" ${saved.bankId === id ? 'selected' : ''}>${name}</option>`).join('')}
-        </select>
-        <input type="text" id="vqr-account" class="vqr-input" placeholder="Số tài khoản" value="${saved.accountNo || ''}">
-        <input type="text" id="vqr-name" class="vqr-input" placeholder="Tên chủ TK (không dấu)" value="${saved.accountName || ''}">
-        <input type="text" id="vqr-info" class="vqr-input" placeholder="Nội dung CK (tùy chọn)">
-        <button class="btn-primary" onclick="Expense.generateVietQR()" style="padding:10px;font-size:0.85rem">Tạo mã QR</button>
-      </div>
-    `;
-  },
-
-  async generateVietQR() {
-    const bankId = document.getElementById('vqr-bank').value;
-    const accountNo = document.getElementById('vqr-account').value.trim();
-    const accountName = document.getElementById('vqr-name').value.trim();
-    const addInfo = document.getElementById('vqr-info').value.trim();
-
-    if (!bankId || !accountNo) {
-      Utils.showToast('Nhập ngân hàng và số tài khoản', 'error');
-      return;
-    }
-
-    // Save for next time
-    localStorage.setItem('xmoni_vietqr', JSON.stringify({ bankId, accountNo, accountName }));
-
-    // Get amount from input
-    const parsed = parseFloat(this.inputAmount) || 0;
-    const amount = Math.round(parsed * 1000);
-
-    const result = document.getElementById('vietqr-result');
-    result.innerHTML = '<p style="text-align:center;color:var(--text-muted)">Đang tạo mã QR...</p>';
-
-    try {
-      const res = await fetch('https://api.vietqr.io/v2/generate', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          accountNo,
-          accountName: accountName.toUpperCase(),
-          acqId: parseInt(bankId),
-          amount: amount || undefined,
-          addInfo: addInfo || undefined,
-          template: 'compact',
-        }),
-      });
-      const data = await res.json();
-      if (data.code === '00' && data.data?.qrDataURL) {
-        result.innerHTML = `
-          <div class="vietqr-qr">
-            <img src="${data.data.qrDataURL}" alt="VietQR Code" class="vietqr-img">
-            <p class="vietqr-amount">${amount > 0 ? Utils.formatVND(amount) : 'Không giới hạn'}</p>
-            <p class="vietqr-account">${accountNo} • ${accountName}</p>
-          </div>
-        `;
-      } else {
-        result.innerHTML = '<p style="color:var(--accent-danger);text-align:center">Lỗi tạo mã QR. Kiểm tra thông tin.</p>';
-      }
-    } catch (e) {
-      result.innerHTML = '<p style="color:var(--accent-danger);text-align:center">Lỗi kết nối. Thử lại.</p>';
-    }
-  },
-
-  // QR Scanner - open camera and scan VietQR codes
-  qrScanner: null,
-
-  startQRScanner() {
-    const container = document.getElementById('qr-scanner-container');
-    if (this.qrScanner) {
-      this.stopQRScanner();
-      return;
-    }
-
-    container.innerHTML = `
-      <div class="qr-scanner-wrapper">
-        <div id="qr-reader" style="width:100%"></div>
-        <button class="quick-pay-btn" onclick="Expense.stopQRScanner()" style="margin-top:8px;width:100%;justify-content:center">✕ Đóng camera</button>
-      </div>
-    `;
-
-    try {
-      this.qrScanner = new Html5Qrcode('qr-reader');
-      this.qrScanner.start(
-        { facingMode: 'environment' },
-        { fps: 10, qrbox: { width: 250, height: 250 } },
-        (text) => this.onQRScanned(text),
-        () => { } // ignore errors during scanning
-      ).catch((err) => {
-        container.innerHTML = `<p style="color:var(--accent-danger);text-align:center;padding:12px">Không mở được camera: ${err}</p>`;
-        this.qrScanner = null;
-      });
-    } catch (err) {
-      container.innerHTML = `<p style="color:var(--accent-danger);text-align:center;padding:12px">Trình duyệt không hỗ trợ camera</p>`;
-      this.qrScanner = null;
-    }
-  },
-
-  stopQRScanner() {
-    if (this.qrScanner) {
-      this.qrScanner.stop().catch(() => { });
-      this.qrScanner = null;
-    }
-    const container = document.getElementById('qr-scanner-container');
-    if (container) container.innerHTML = '';
-  },
-
-  // Parse scanned QR data (EMVCo TLV format used by VietQR / NAPAS)
-  parseEMVCo(data) {
-    const result = {};
-    let i = 0;
-    while (i < data.length - 3) {
-      const tag = data.substring(i, i + 2);
-      const len = parseInt(data.substring(i + 2, i + 4));
-      if (isNaN(len) || i + 4 + len > data.length) break;
-      const val = data.substring(i + 4, i + 4 + len);
-      result[tag] = val;
-      i += 4 + len;
-    }
-    return result;
-  },
-
-  // Bank BIN to appId mapping for VietQR deep links
-  BANK_BIN_MAP: {
-    '970415': { id: 'icb', name: 'VietinBank' },
-    '970418': { id: 'bidv', name: 'BIDV' },
-    '970436': { id: 'vcb', name: 'Vietcombank' },
-    '970407': { id: 'tcb', name: 'Techcombank' },
-    '970422': { id: 'mb', name: 'MB Bank' },
-    '970416': { id: 'acb', name: 'ACB' },
-    '970432': { id: 'vpb', name: 'VPBank' },
-    '970405': { id: 'vba', name: 'Agribank' },
-    '970423': { id: 'tpb', name: 'TPBank' },
-    '970448': { id: 'ocb', name: 'OCB' },
-    '970437': { id: 'hdb', name: 'HDBank' },
-    '970454': { id: 'vib', name: 'VIB' },
-    '970449': { id: 'lpb', name: 'LPBank' },
-    '970443': { id: 'shb', name: 'SHB' },
-    '970431': { id: 'eib', name: 'Eximbank' },
-  },
-
-  onQRScanned(text) {
-    this.stopQRScanner();
-
-    const result = document.getElementById('vietqr-result');
-
-    // Parse EMVCo TLV
-    const tlv = this.parseEMVCo(text);
-
-    // Tag 38 = Merchant Account Info (VietQR / NAPAS)
-    const tag38 = tlv['38'];
-    if (!tag38) {
-      result.innerHTML = '<p style="color:var(--accent-danger);text-align:center">Mã QR không phải VietQR</p>';
-      return;
-    }
-
-    // Parse nested TLV inside tag 38
-    const merchantInfo = this.parseEMVCo(tag38);
-    // Sub-tag 01 = Bank BIN, Sub-tag 02 = Account No
-    const bankBin = merchantInfo['01'] || '';
-    const accountNo = merchantInfo['02'] || '';
-
-    // Tag 54 = Amount
-    const amount = tlv['54'] ? parseInt(tlv['54']) : 0;
-
-    // Tag 62 = Additional Data (contains sub-tag 08 = addInfo/note)
-    let addInfo = '';
-    if (tlv['62']) {
-      const tag62 = this.parseEMVCo(tlv['62']);
-      addInfo = tag62['08'] || '';
-    }
-
-    const bank = this.BANK_BIN_MAP[bankBin];
-    const bankName = bank ? bank.name : `NH ${bankBin}`;
-    const bankAppId = bank ? bank.id : null;
-
-    result.innerHTML = `
-      <div class="qr-scan-result">
-        <div class="qr-scan-info">
-          <div class="qr-scan-row"><span>🏦 Ngân hàng</span><strong>${bankName}</strong></div>
-          <div class="qr-scan-row"><span>📋 Số TK</span><strong>${accountNo}</strong></div>
-          ${amount > 0 ? `<div class="qr-scan-row"><span>💰 Số tiền</span><strong>${Utils.formatVND(amount)}</strong></div>` : ''}
-          ${addInfo ? `<div class="qr-scan-row"><span>📝 Nội dung</span><strong>${addInfo}</strong></div>` : ''}
-        </div>
-        ${bankAppId ? `
-          <button class="btn-primary" onclick="window.open('https://dl.vietqr.io/pay?app=${bankAppId}','_blank')" style="margin-top:12px;padding:12px;font-size:0.9rem;width:100%">
-            Mở app ${bankName} để chuyển khoản
-          </button>
-        ` : ''}
-      </div>
-    `;
-
-    // Auto-fill amount into the expense input if present
-    if (amount > 0) {
-      this.inputAmount = (amount / 1000).toString();
-      const display = document.getElementById('qa-amount');
-      if (display) {
-        display.textContent = Utils.formatVND(amount);
-        display.classList.add('has-value');
-      }
-      const saveBtn = document.getElementById('btn-save-expense');
-      if (saveBtn) saveBtn.disabled = false;
-    }
-
-    Utils.showToast('Đã quét mã QR thành công!', 'success');
   },
 
   // Delete expense
   deleteExpense(id) {
     if (!confirm('Xóa khoản chi này?')) return;
-
     App.state.data.expenses = App.state.data.expenses.filter(e => e.id !== id);
     Drive.queueSave(App.state.data);
     this.render();
@@ -516,7 +258,6 @@ const Expense = {
 
   // Save expense then open banking app
   saveAndPay(app) {
-    // Save expense first
     const parsed = parseFloat(this.inputAmount) || 0;
     const amount = Math.round(parsed * 1000);
 
@@ -537,19 +278,141 @@ const Expense = {
     }
 
     this.closeQuickAdd();
-
-    // Refresh views
     if (App.state.currentView === 'expenses') this.render();
     if (App.state.currentView === 'dashboard') Dashboard.render();
 
-    // VietQR deep link - works on both iOS and Android
-    const deeplink = `https://dl.vietqr.io/pay?app=${app}`;
-    window.open(deeplink, '_blank');
+    // VietQR deep link
+    window.open(`https://dl.vietqr.io/pay?app=${app}`, '_blank');
+  },
+
+  // ===== QR Scanner =====
+  qrScanner: null,
+
+  startQRScanner() {
+    const container = document.getElementById('qr-scanner-container');
+    if (this.qrScanner) { this.stopQRScanner(); return; }
+
+    container.innerHTML = `
+      <div class="qr-scanner-wrapper">
+        <div id="qr-reader"></div>
+        <button class="preset-btn" onclick="Expense.stopQRScanner()" style="width:100%;margin-top:6px">✕ Đóng camera</button>
+      </div>
+    `;
+
+    try {
+      this.qrScanner = new Html5Qrcode('qr-reader');
+      this.qrScanner.start(
+        { facingMode: 'environment' },
+        { fps: 10, qrbox: { width: 220, height: 220 } },
+        (text) => this.onQRScanned(text),
+        () => { }
+      ).catch((err) => {
+        container.innerHTML = `<p style="color:var(--accent-danger);text-align:center;padding:8px;font-size:0.8rem">Camera: ${err}</p>`;
+        this.qrScanner = null;
+      });
+    } catch (err) {
+      container.innerHTML = `<p style="color:var(--accent-danger);text-align:center;padding:8px;font-size:0.8rem">Không hỗ trợ camera</p>`;
+      this.qrScanner = null;
+    }
+  },
+
+  stopQRScanner() {
+    if (this.qrScanner) { this.qrScanner.stop().catch(() => { }); this.qrScanner = null; }
+    const c = document.getElementById('qr-scanner-container');
+    if (c) c.innerHTML = '';
+  },
+
+  // Parse EMVCo TLV (VietQR / NAPAS format)
+  parseEMVCo(data) {
+    const r = {};
+    let i = 0;
+    while (i < data.length - 3) {
+      const tag = data.substring(i, i + 2);
+      const len = parseInt(data.substring(i + 2, i + 4));
+      if (isNaN(len) || i + 4 + len > data.length) break;
+      r[tag] = data.substring(i + 4, i + 4 + len);
+      i += 4 + len;
+    }
+    return r;
+  },
+
+  // Bank BIN map
+  BANK_BIN_MAP: {
+    '970415': { id: 'icb', name: 'VietinBank' },
+    '970418': { id: 'bidv', name: 'BIDV' },
+    '970436': { id: 'vcb', name: 'VCB' },
+    '970407': { id: 'tcb', name: 'TCB' },
+    '970422': { id: 'mb', name: 'MB' },
+    '970416': { id: 'acb', name: 'ACB' },
+    '970432': { id: 'vpb', name: 'VPBank' },
+    '970405': { id: 'vba', name: 'Agri' },
+    '970423': { id: 'tpb', name: 'TPBank' },
+    '970448': { id: 'ocb', name: 'OCB' },
+    '970437': { id: 'hdb', name: 'HDBank' },
+    '970454': { id: 'vib', name: 'VIB' },
+    '970449': { id: 'lpb', name: 'LPBank' },
+    '970443': { id: 'shb', name: 'SHB' },
+    '970431': { id: 'eib', name: 'EximBank' },
+  },
+
+  onQRScanned(text) {
+    this.stopQRScanner();
+
+    const tlv = this.parseEMVCo(text);
+    const tag38 = tlv['38'];
+    const banner = document.getElementById('qr-scan-banner');
+
+    if (!tag38) {
+      banner.innerHTML = '<div class="qr-banner error">❌ Không phải mã VietQR</div>';
+      setTimeout(() => banner.innerHTML = '', 3000);
+      return;
+    }
+
+    const m = this.parseEMVCo(tag38);
+    const bankBin = m['01'] || '';
+    const accountNo = m['02'] || '';
+    const amount = tlv['54'] ? parseInt(tlv['54']) : 0;
+    let addInfo = '';
+    if (tlv['62']) { const t62 = this.parseEMVCo(tlv['62']); addInfo = t62['08'] || ''; }
+
+    const bank = this.BANK_BIN_MAP[bankBin];
+    const bankName = bank ? bank.name : bankBin;
+    const bankAppId = bank ? bank.id : null;
+
+    // Store scanned data
+    this.scannedQR = { bankBin, accountNo, amount, addInfo, bankName, bankAppId };
+
+    // Show compact banner with scanned info
+    banner.innerHTML = `
+      <div class="qr-banner success">
+        <span>✅ ${bankName} • ${accountNo}${amount > 0 ? ' • ' + Utils.formatCompactVND(amount) : ''}</span>
+        ${bankAppId ? `<button class="qr-banner-btn" onclick="window.open('https://dl.vietqr.io/pay?app=${bankAppId}','_blank')">Mở app</button>` : ''}
+      </div>
+    `;
+
+    // Auto-fill amount
+    if (amount > 0) {
+      this.inputAmount = (amount / 1000).toString();
+      const display = document.getElementById('qa-amount');
+      if (display) { display.textContent = Utils.formatVND(amount); display.classList.add('has-value'); }
+      const btn = document.getElementById('btn-save-expense');
+      if (btn) btn.disabled = false;
+    }
+
+    // Auto-fill note
+    if (addInfo) {
+      const note = document.getElementById('qa-note');
+      if (note) note.value = addInfo;
+    }
+
+    Utils.showToast('Đã quét QR!', 'success');
   },
 
   closeQuickAdd() {
+    this.stopQRScanner();
     document.getElementById('expense-modal').classList.remove('active');
     this.inputAmount = '';
+    this.scannedQR = null;
   },
 
   prevMonth() {

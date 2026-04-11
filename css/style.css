@@ -1101,18 +1101,114 @@ textarea {
 
 /* === Quick Add Modal === */
 .quick-add-modal {
-  padding-bottom: calc(24px + env(safe-area-inset-bottom, 0));
+  padding: 16px 16px calc(12px + env(safe-area-inset-bottom, 0));
 }
 
 .quick-add-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  margin-bottom: 16px;
+  margin-bottom: 10px;
 }
 
 .quick-add-header h3 {
   margin-bottom: 0;
+  font-size: 1rem;
+}
+
+.qa-header-actions {
+  display: flex;
+  gap: 4px;
+}
+
+.qa-header-actions .btn-icon {
+  font-size: 1.1rem;
+}
+
+/* Compact display */
+.quick-add-display.compact {
+  padding: 6px 0;
+}
+
+.quick-add-display.compact .qa-amount {
+  font-size: 2rem;
+}
+
+/* Compact numpad */
+.numpad.compact {
+  gap: 5px;
+  margin-bottom: 10px;
+}
+
+.numpad.compact .numpad-btn {
+  padding: 12px;
+  font-size: 1.1rem;
+}
+
+/* Bottom row: save + bank icons */
+.qa-bottom-row {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.qa-bottom-row .btn-save-expense {
+  flex-shrink: 0;
+  width: auto;
+  padding: 12px 20px;
+  font-size: 0.9rem;
+}
+
+.qa-bank-row {
+  display: flex;
+  gap: 4px;
+  flex: 1;
+  justify-content: flex-end;
+}
+
+.quick-pay-btn.mini {
+  padding: 10px;
+  font-size: 1.1rem;
+  min-width: 40px;
+  justify-content: center;
+  border-radius: 50%;
+  aspect-ratio: 1;
+}
+
+/* QR scan banner */
+.qr-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 12px;
+  border-radius: var(--radius-sm);
+  font-size: 0.78rem;
+  margin-bottom: 8px;
+  gap: 8px;
+}
+
+.qr-banner.success {
+  background: rgba(0, 214, 143, 0.1);
+  border: 1px solid rgba(0, 214, 143, 0.3);
+  color: var(--accent-success);
+}
+
+.qr-banner.error {
+  background: rgba(255, 71, 87, 0.1);
+  border: 1px solid rgba(255, 71, 87, 0.3);
+  color: var(--accent-danger);
+}
+
+.qr-banner-btn {
+  background: var(--accent-success);
+  color: white;
+  border: none;
+  padding: 4px 10px;
+  border-radius: var(--radius-xl);
+  font-size: 0.7rem;
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
 }
 
 /* Daily spending bar in quick-add */
