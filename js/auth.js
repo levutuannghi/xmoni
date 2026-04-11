@@ -4,7 +4,7 @@
 
 const Auth = {
     // IMPORTANT: Replace with your own Client ID from Google Cloud Console
-    CLIENT_ID: 'YOUR_CLIENT_ID_HERE',
+    CLIENT_ID: '1071728757258-tidtkuf5rkj1nafjt3q9fe58gk2t71dk.apps.googleusercontent.com',
     SCOPES: 'https://www.googleapis.com/auth/drive.file',
 
     tokenClient: null,
