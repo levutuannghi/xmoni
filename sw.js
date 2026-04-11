@@ -1,5 +1,5 @@
 // XMoni Service Worker - Network-first caching
-const CACHE_NAME = 'xmoni-v21';
+const CACHE_NAME = 'xmoni-v23';
 const ASSETS = [
     './',
     './index.html',

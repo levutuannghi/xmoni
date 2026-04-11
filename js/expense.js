@@ -391,11 +391,11 @@ const Expense = {
     const stk = (document.getElementById('qa-stk')?.value || '').trim();
     let metadata = null;
     if (stk) {
-      const bankEl = document.getElementById('qa-bank');
-      const bankOption = bankEl?.options[bankEl.selectedIndex];
+      const bankBin = (document.getElementById('qa-bank')?.value || '').trim();
+      const bank = this.lookupBank(bankBin);
       metadata = {
         expense_id: expense.id,
-        qr_bank: bankOption && bankOption.value ? bankOption.text : '',
+        qr_bank: bank ? bank.shortName : '',
         qr_account: stk,
         qr_recipient: (document.getElementById('qa-recipient')?.value || '').trim(),
         qr_memo: (document.getElementById('qa-memo')?.value || '').trim(),
