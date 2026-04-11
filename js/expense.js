@@ -585,40 +585,56 @@ const Expense = {
   async uploadQRImage(event) {
     const file = event.target.files[0];
     if (!file) return;
+
+    // Engine 1: Native BarcodeDetector (fastest, Safari 17.2+, Chrome 83+)
+    if (typeof BarcodeDetector !== 'undefined') {
+      try {
+        const bitmap = await createImageBitmap(file);
+        const detector = new BarcodeDetector({ formats: ['qr_code'] });
+        const results = await detector.detect(bitmap);
+        bitmap.close();
+        if (results.length > 0) {
+          this.onQRScanned(results[0].rawValue);
+          event.target.value = '';
+          return;
+        }
+      } catch (e) { /* fallthrough */ }
+    }
+
+    // Engine 2: Html5Qrcode (ZXing-based, best for QR with logos)
+    if (typeof Html5Qrcode !== 'undefined') {
+      try {
+        const html5Qr = new Html5Qrcode('__qr_scan_tmp__', /* verbose */ false);
+        // Create temp container (required by Html5Qrcode but not shown)
+        let tmp = document.getElementById('__qr_scan_tmp__');
+        if (!tmp) {
+          tmp = document.createElement('div');
+          tmp.id = '__qr_scan_tmp__';
+          tmp.style.display = 'none';
+          document.body.appendChild(tmp);
+        }
+        const decoded = await html5Qr.scanFile(file, /* showImage */ false);
+        html5Qr.clear();
+        if (decoded) {
+          this.onQRScanned(decoded);
+          event.target.value = '';
+          return;
+        }
+      } catch (e) { /* fallthrough */ }
+    }
+
+    // Engine 3: QrScanner (jsQR fallback)
     try {
-      // Try default scan first
       const result = await QrScanner.scanImage(file, {
         returnDetailedScanResult: true,
         alsoTryWithoutScanRegion: true,
       });
       this.onQRScanned(result.data);
     } catch (err) {
-      // Fallback: draw to canvas for better detection
-      try {
-        const img = new Image();
-        const url = URL.createObjectURL(file);
-        await new Promise((resolve, reject) => {
-          img.onload = resolve;
-          img.onerror = reject;
-          img.src = url;
-        });
-        const canvas = document.createElement('canvas');
-        canvas.width = img.naturalWidth;
-        canvas.height = img.naturalHeight;
-        const ctx = canvas.getContext('2d');
-        ctx.drawImage(img, 0, 0);
-        URL.revokeObjectURL(url);
-        const result = await QrScanner.scanImage(canvas, {
-          returnDetailedScanResult: true,
-          alsoTryWithoutScanRegion: true,
-        });
-        this.onQRScanned(result.data);
-      } catch (err2) {
-        const banner = document.getElementById('qr-scan-banner');
-        if (banner) {
-          banner.innerHTML = '<div class="qr-banner error">\u274c Không tìm thấy mã QR trong ảnh</div>';
-          setTimeout(() => banner.innerHTML = '', 3000);
-        }
+      const banner = document.getElementById('qr-scan-banner');
+      if (banner) {
+        banner.innerHTML = '<div class="qr-banner error">\u274c Không tìm thấy mã QR trong ảnh</div>';
+        setTimeout(() => banner.innerHTML = '', 3000);
       }
     }
     event.target.value = '';
