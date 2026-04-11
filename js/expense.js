@@ -160,11 +160,11 @@ const Expense = {
         <div class="qa-bottom-row">
           <button class="btn-save-expense" id="btn-save-expense" onclick="Expense.saveExpense()" disabled>💾 Lưu</button>
           <div class="qa-bank-row">
-            <button class="quick-pay-btn mini" onclick="Expense.saveAndPay('tpb')" title="TPBank">🏦</button>
-            <button class="quick-pay-btn mini" onclick="Expense.saveAndPay('vcb')" title="VCB">🟢</button>
-            <button class="quick-pay-btn mini" onclick="Expense.saveAndPay('tcb')" title="TCB">🔴</button>
-            <button class="quick-pay-btn mini" onclick="Expense.saveAndPay('bidv')" title="BIDV">🔵</button>
-            <button class="quick-pay-btn mini" onclick="Expense.saveAndPay('mb')" title="MB">⚫</button>
+            <button class="quick-pay-btn labeled" onclick="Expense.saveAndPay('tpb')">🏦TP</button>
+            <button class="quick-pay-btn labeled" onclick="Expense.saveAndPay('vcb')">🟢VCB</button>
+            <button class="quick-pay-btn labeled" onclick="Expense.saveAndPay('tcb')">🔴TCB</button>
+            <button class="quick-pay-btn labeled" onclick="Expense.saveAndPay('bidv')">🔵BID</button>
+            <button class="quick-pay-btn labeled" onclick="Expense.saveAndPay('mb')">⚫MB</button>
             <button class="quick-pay-btn mini" onclick="Expense.saveAndPay('acb')" title="ACB">�</button>
           </div>
         </div>
@@ -256,11 +256,12 @@ const Expense = {
     Utils.showToast('Đã xóa');
   },
 
-  // Save expense then open banking app
+  // Save expense then open banking app (or show QR if scanned)
   saveAndPay(app) {
     const parsed = parseFloat(this.inputAmount) || 0;
     const amount = Math.round(parsed * 1000);
 
+    // Save the expense
     if (amount > 0) {
       const selectedChip = document.querySelector('.category-chip.selected');
       if (selectedChip) {
@@ -274,15 +275,23 @@ const Expense = {
         App.state.data.expenses.push(expense);
         Drive.queueSave(App.state.data);
         Utils.showToast(`Đã lưu -${Utils.formatVND(amount)}`, 'success');
+        if (App.state.currentView === 'expenses') this.render();
+        if (App.state.currentView === 'dashboard') Dashboard.render();
       }
     }
 
-    this.closeQuickAdd();
-    if (App.state.currentView === 'expenses') this.render();
-    if (App.state.currentView === 'dashboard') Dashboard.render();
+    // Build VietQR deep link with payment data
+    let deeplink = `https://dl.vietqr.io/pay?app=${app}`;
+    if (this.scannedQR && this.scannedQR.accountNo) {
+      const qr = this.scannedQR;
+      deeplink += `&ba=${encodeURIComponent(qr.accountNo + '@' + qr.bankBin)}`;
+      if (amount > 0) deeplink += `&am=${amount}`;
+      if (qr.addInfo) deeplink += `&tn=${encodeURIComponent(qr.addInfo)}`;
+      if (qr.accountName) deeplink += `&bn=${encodeURIComponent(qr.accountName)}`;
+    }
 
-    // VietQR deep link
-    window.open(`https://dl.vietqr.io/pay?app=${app}`, '_blank');
+    this.closeQuickAdd();
+    window.open(deeplink, '_blank');
   },
 
   // ===== QR Scanner =====
@@ -368,25 +377,30 @@ const Expense = {
       return;
     }
 
-    const m = this.parseEMVCo(tag38);
-    const bankBin = m['01'] || '';
-    const accountNo = m['02'] || '';
+    // 3-level parse: Tag38 → Sub01 (merchant data) → Sub00 (BIN) + Sub01 (account)
+    const tag38Data = this.parseEMVCo(tag38);
+    const merchantData = this.parseEMVCo(tag38Data['01'] || '');
+    const bankBin = merchantData['00'] || '';
+    const accountNo = merchantData['01'] || '';
+
+    // Tag 54 = amount, Tag 59 = account holder name
     const amount = tlv['54'] ? parseInt(tlv['54']) : 0;
+    const accountName = tlv['59'] || '';
+
+    // Tag 62 = additional data (sub-tag 08 = memo)
     let addInfo = '';
     if (tlv['62']) { const t62 = this.parseEMVCo(tlv['62']); addInfo = t62['08'] || ''; }
 
     const bank = this.BANK_BIN_MAP[bankBin];
     const bankName = bank ? bank.name : bankBin;
-    const bankAppId = bank ? bank.id : null;
 
     // Store scanned data
-    this.scannedQR = { bankBin, accountNo, amount, addInfo, bankName, bankAppId };
+    this.scannedQR = { bankBin, accountNo, amount, addInfo, bankName, accountName };
 
-    // Show compact banner with scanned info
+    // Show banner with scanned info
     banner.innerHTML = `
       <div class="qr-banner success">
-        <span>✅ ${bankName} • ${accountNo}${amount > 0 ? ' • ' + Utils.formatCompactVND(amount) : ''}</span>
-        ${bankAppId ? `<button class="qr-banner-btn" onclick="window.open('https://dl.vietqr.io/pay?app=${bankAppId}','_blank')">Mở app</button>` : ''}
+        <span>✅ ${bankName} • ${accountNo}${accountName ? ' • ' + accountName : ''}${amount > 0 ? ' • ' + Utils.formatCompactVND(amount) : ''}</span>
       </div>
     `;
 
@@ -399,10 +413,11 @@ const Expense = {
       if (btn) btn.disabled = false;
     }
 
-    // Auto-fill note
-    if (addInfo) {
+    // Auto-fill note with account name or memo
+    const noteVal = addInfo || accountName;
+    if (noteVal) {
       const note = document.getElementById('qa-note');
-      if (note) note.value = addInfo;
+      if (note) note.value = noteVal;
     }
 
     Utils.showToast('Đã quét QR!', 'success');
