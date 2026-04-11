@@ -187,10 +187,13 @@ const Expense = {
         </div>
 
         <div class="vietqr-section">
-          <div class="quick-pay-label">Tạo mã QR chuyển khoản</div>
-          <div class="vietqr-form" id="vietqr-form">
-            <button class="quick-pay-btn vietqr-toggle" onclick="Expense.toggleVietQR()">📱 Tạo mã VietQR</button>
+          <div class="quick-pay-label">VietQR</div>
+          <div class="vietqr-actions">
+            <button class="quick-pay-btn vietqr-toggle" onclick="Expense.startQRScanner()">📷 Quét mã QR</button>
+            <button class="quick-pay-btn vietqr-toggle" onclick="Expense.toggleVietQR()">📱 Tạo mã QR</button>
           </div>
+          <div id="qr-scanner-container"></div>
+          <div class="vietqr-form" id="vietqr-form"></div>
           <div class="vietqr-result" id="vietqr-result"></div>
         </div>
       </div>
@@ -356,6 +359,149 @@ const Expense = {
     } catch (e) {
       result.innerHTML = '<p style="color:var(--accent-danger);text-align:center">Lỗi kết nối. Thử lại.</p>';
     }
+  },
+
+  // QR Scanner - open camera and scan VietQR codes
+  qrScanner: null,
+
+  startQRScanner() {
+    const container = document.getElementById('qr-scanner-container');
+    if (this.qrScanner) {
+      this.stopQRScanner();
+      return;
+    }
+
+    container.innerHTML = `
+      <div class="qr-scanner-wrapper">
+        <div id="qr-reader" style="width:100%"></div>
+        <button class="quick-pay-btn" onclick="Expense.stopQRScanner()" style="margin-top:8px;width:100%;justify-content:center">✕ Đóng camera</button>
+      </div>
+    `;
+
+    try {
+      this.qrScanner = new Html5Qrcode('qr-reader');
+      this.qrScanner.start(
+        { facingMode: 'environment' },
+        { fps: 10, qrbox: { width: 250, height: 250 } },
+        (text) => this.onQRScanned(text),
+        () => { } // ignore errors during scanning
+      ).catch((err) => {
+        container.innerHTML = `<p style="color:var(--accent-danger);text-align:center;padding:12px">Không mở được camera: ${err}</p>`;
+        this.qrScanner = null;
+      });
+    } catch (err) {
+      container.innerHTML = `<p style="color:var(--accent-danger);text-align:center;padding:12px">Trình duyệt không hỗ trợ camera</p>`;
+      this.qrScanner = null;
+    }
+  },
+
+  stopQRScanner() {
+    if (this.qrScanner) {
+      this.qrScanner.stop().catch(() => { });
+      this.qrScanner = null;
+    }
+    const container = document.getElementById('qr-scanner-container');
+    if (container) container.innerHTML = '';
+  },
+
+  // Parse scanned QR data (EMVCo TLV format used by VietQR / NAPAS)
+  parseEMVCo(data) {
+    const result = {};
+    let i = 0;
+    while (i < data.length - 3) {
+      const tag = data.substring(i, i + 2);
+      const len = parseInt(data.substring(i + 2, i + 4));
+      if (isNaN(len) || i + 4 + len > data.length) break;
+      const val = data.substring(i + 4, i + 4 + len);
+      result[tag] = val;
+      i += 4 + len;
+    }
+    return result;
+  },
+
+  // Bank BIN to appId mapping for VietQR deep links
+  BANK_BIN_MAP: {
+    '970415': { id: 'icb', name: 'VietinBank' },
+    '970418': { id: 'bidv', name: 'BIDV' },
+    '970436': { id: 'vcb', name: 'Vietcombank' },
+    '970407': { id: 'tcb', name: 'Techcombank' },
+    '970422': { id: 'mb', name: 'MB Bank' },
+    '970416': { id: 'acb', name: 'ACB' },
+    '970432': { id: 'vpb', name: 'VPBank' },
+    '970405': { id: 'vba', name: 'Agribank' },
+    '970423': { id: 'tpb', name: 'TPBank' },
+    '970448': { id: 'ocb', name: 'OCB' },
+    '970437': { id: 'hdb', name: 'HDBank' },
+    '970454': { id: 'vib', name: 'VIB' },
+    '970449': { id: 'lpb', name: 'LPBank' },
+    '970443': { id: 'shb', name: 'SHB' },
+    '970431': { id: 'eib', name: 'Eximbank' },
+  },
+
+  onQRScanned(text) {
+    this.stopQRScanner();
+
+    const result = document.getElementById('vietqr-result');
+
+    // Parse EMVCo TLV
+    const tlv = this.parseEMVCo(text);
+
+    // Tag 38 = Merchant Account Info (VietQR / NAPAS)
+    const tag38 = tlv['38'];
+    if (!tag38) {
+      result.innerHTML = '<p style="color:var(--accent-danger);text-align:center">Mã QR không phải VietQR</p>';
+      return;
+    }
+
+    // Parse nested TLV inside tag 38
+    const merchantInfo = this.parseEMVCo(tag38);
+    // Sub-tag 01 = Bank BIN, Sub-tag 02 = Account No
+    const bankBin = merchantInfo['01'] || '';
+    const accountNo = merchantInfo['02'] || '';
+
+    // Tag 54 = Amount
+    const amount = tlv['54'] ? parseInt(tlv['54']) : 0;
+
+    // Tag 62 = Additional Data (contains sub-tag 08 = addInfo/note)
+    let addInfo = '';
+    if (tlv['62']) {
+      const tag62 = this.parseEMVCo(tlv['62']);
+      addInfo = tag62['08'] || '';
+    }
+
+    const bank = this.BANK_BIN_MAP[bankBin];
+    const bankName = bank ? bank.name : `NH ${bankBin}`;
+    const bankAppId = bank ? bank.id : null;
+
+    result.innerHTML = `
+      <div class="qr-scan-result">
+        <div class="qr-scan-info">
+          <div class="qr-scan-row"><span>🏦 Ngân hàng</span><strong>${bankName}</strong></div>
+          <div class="qr-scan-row"><span>📋 Số TK</span><strong>${accountNo}</strong></div>
+          ${amount > 0 ? `<div class="qr-scan-row"><span>💰 Số tiền</span><strong>${Utils.formatVND(amount)}</strong></div>` : ''}
+          ${addInfo ? `<div class="qr-scan-row"><span>📝 Nội dung</span><strong>${addInfo}</strong></div>` : ''}
+        </div>
+        ${bankAppId ? `
+          <button class="btn-primary" onclick="window.open('https://dl.vietqr.io/pay?app=${bankAppId}','_blank')" style="margin-top:12px;padding:12px;font-size:0.9rem;width:100%">
+            Mở app ${bankName} để chuyển khoản
+          </button>
+        ` : ''}
+      </div>
+    `;
+
+    // Auto-fill amount into the expense input if present
+    if (amount > 0) {
+      this.inputAmount = (amount / 1000).toString();
+      const display = document.getElementById('qa-amount');
+      if (display) {
+        display.textContent = Utils.formatVND(amount);
+        display.classList.add('has-value');
+      }
+      const saveBtn = document.getElementById('btn-save-expense');
+      if (saveBtn) saveBtn.disabled = false;
+    }
+
+    Utils.showToast('Đã quét mã QR thành công!', 'success');
   },
 
   // Delete expense

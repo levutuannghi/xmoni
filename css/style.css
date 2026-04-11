@@ -1196,6 +1196,13 @@ textarea {
 
 select.vqr-input {
   appearance: auto;
+  background-color: #1a1a2e;
+  color: var(--text-primary);
+}
+
+select.vqr-input option {
+  background: #1a1a2e;
+  color: var(--text-primary);
 }
 
 .vietqr-qr {
@@ -1220,6 +1227,64 @@ select.vqr-input {
   font-size: 0.75rem;
   color: var(--text-muted);
   margin-top: 2px;
+}
+
+/* VietQR action buttons */
+.vietqr-actions {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.vietqr-actions .vietqr-toggle {
+  flex: 1;
+  justify-content: center;
+}
+
+/* QR Scanner */
+.qr-scanner-wrapper {
+  margin: 8px 0;
+  border-radius: var(--radius-md);
+  overflow: hidden;
+}
+
+#qr-reader {
+  border-radius: var(--radius-md);
+}
+
+#qr-reader video {
+  border-radius: var(--radius-md);
+}
+
+/* QR Scan Results */
+.qr-scan-result {
+  background: rgba(108, 99, 255, 0.05);
+  border: 1px solid rgba(108, 99, 255, 0.2);
+  border-radius: var(--radius-md);
+  padding: 16px;
+  margin-top: 12px;
+}
+
+.qr-scan-info {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.qr-scan-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 0.85rem;
+}
+
+.qr-scan-row span {
+  color: var(--text-secondary);
+}
+
+.qr-scan-row strong {
+  color: var(--text-primary);
+  text-align: right;
 }
 
 .quick-add-categories {
