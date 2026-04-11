@@ -162,15 +162,10 @@ const Expense = {
 
         <div class="qa-bottom-row">
           <button class="btn-save-expense" id="btn-save-expense" onclick="Expense.saveExpense()" disabled>💾 Lưu</button>
-          <div class="qa-bank-row">
-            <button class="quick-pay-btn labeled" onclick="Expense.saveAndPay('tpb')">🏦TP</button>
-            <button class="quick-pay-btn labeled" onclick="Expense.saveAndPay('vcb')">🟢VCB</button>
-            <button class="quick-pay-btn labeled" onclick="Expense.saveAndPay('tcb')">🔴TCB</button>
-            <button class="quick-pay-btn labeled" onclick="Expense.saveAndPay('bidv')">🔵BID</button>
-            <button class="quick-pay-btn labeled" onclick="Expense.saveAndPay('mb')">⚫MB</button>
-            <button class="quick-pay-btn mini" onclick="Expense.saveAndPay('acb')" title="ACB">�</button>
-          </div>
         </div>
+
+        <div class="qa-bank-label">Lưu & mở app ngân hàng:</div>
+        <div class="qa-bank-grid" id="qa-bank-grid"></div>
 
       </div>
     `;
@@ -179,6 +174,50 @@ const Expense = {
     if (!modal.querySelector('.category-chip.selected')) {
       modal.querySelector('.category-chip')?.classList.add('selected');
     }
+    this.renderBankGrid();
+  },
+
+  // Render bank grid from VietQR API data
+  renderBankGrid() {
+    const grid = document.getElementById('qa-bank-grid');
+    if (!grid) return;
+
+    if (!this.bankList || this.bankList.length === 0) {
+      grid.innerHTML = '<p style="color:var(--text-muted);font-size:0.75rem;text-align:center">Đang tải danh sách NH...</p>';
+      // Retry after load
+      this.loadBankList().then(() => this.renderBankGrid());
+      return;
+    }
+
+    // Only show banks that support transfer
+    const transferBanks = this.bankList.filter(b => b.transferSupported === 1);
+
+    // Sort by recently used
+    const recent = JSON.parse(localStorage.getItem('xmoni_recent_banks') || '[]');
+    const sorted = [...transferBanks].sort((a, b) => {
+      const ai = recent.indexOf(a.code.toLowerCase());
+      const bi = recent.indexOf(b.code.toLowerCase());
+      if (ai !== -1 && bi !== -1) return ai - bi;
+      if (ai !== -1) return -1;
+      if (bi !== -1) return 1;
+      return 0;
+    });
+
+    grid.innerHTML = sorted.map(b =>
+      `<button class="bank-grid-btn" onclick="Expense.saveAndPay('${b.code.toLowerCase()}')" title="${b.shortName}">
+        <img src="${b.logo}" alt="${b.shortName}" class="bank-logo" onerror="this.style.display='none'">
+        <span>${b.shortName}</span>
+      </button>`
+    ).join('');
+  },
+
+  // Track recently used bank
+  trackRecentBank(code) {
+    let recent = JSON.parse(localStorage.getItem('xmoni_recent_banks') || '[]');
+    recent = recent.filter(c => c !== code);
+    recent.unshift(code);
+    recent = recent.slice(0, 10); // keep top 10
+    localStorage.setItem('xmoni_recent_banks', JSON.stringify(recent));
   },
 
   // Category selection
@@ -293,6 +332,7 @@ const Expense = {
       if (qr.accountName) deeplink += `&bn=${encodeURIComponent(qr.accountName)}`;
     }
 
+    this.trackRecentBank(app);
     this.closeQuickAdd();
     window.open(deeplink, '_blank');
   },

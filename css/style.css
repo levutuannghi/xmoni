@@ -1234,6 +1234,62 @@ textarea {
   gap: 2px;
 }
 
+/* Bank grid */
+.qa-bank-label {
+  font-size: 0.7rem;
+  color: var(--text-muted);
+  margin: 8px 0 4px;
+}
+
+.qa-bank-grid {
+  display: flex;
+  gap: 6px;
+  overflow-x: auto;
+  padding-bottom: 4px;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
+}
+
+.qa-bank-grid::-webkit-scrollbar {
+  display: none;
+}
+
+.bank-grid-btn {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+  padding: 6px 8px;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  min-width: 56px;
+  flex-shrink: 0;
+  transition: all 0.15s;
+}
+
+.bank-grid-btn:active {
+  transform: scale(0.95);
+  border-color: var(--accent-primary);
+}
+
+.bank-grid-btn .bank-logo {
+  width: 28px;
+  height: 28px;
+  object-fit: contain;
+  border-radius: 4px;
+}
+
+.bank-grid-btn span {
+  font-size: 0.6rem;
+  color: var(--text-secondary);
+  white-space: nowrap;
+  max-width: 52px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 /* Daily spending bar in quick-add */
 .qa-daily-bar {
   background: rgba(255, 255, 255, 0.03);
