@@ -1,16 +1,17 @@
 // ============================================
-// XMoni - Expense Entry & Listing
+// XMoni - Expense Entry & Listing (Redesigned)
 // ============================================
 
 const Expense = {
   inputAmount: '',
   lastCategoryId: localStorage.getItem('xmoni_last_category') || null,
-  scannedQR: null, // stores parsed QR data after scan
+  scannedQR: null,
+  selectedBankApp: localStorage.getItem('xmoni_selected_bank') || null,
+  qrAmountLocked: false,
 
-  // Init: load bank list from VietQR API
   init() { this.loadBankList(); this.loadAppList(); },
 
-  // Render expense view
+  // === Render expense list view ===
   render() {
     const container = document.getElementById('view-expenses');
     const data = App.state.data;
@@ -19,7 +20,6 @@ const Expense = {
       .filter(e => Utils.getMonthKey(e.date) === monthKey)
       .sort((a, b) => b.date.localeCompare(a.date) || b.id.localeCompare(a.id));
 
-    // Group by date
     const grouped = {};
     monthExpenses.forEach(e => {
       if (!grouped[e.date]) grouped[e.date] = [];
@@ -32,7 +32,6 @@ const Expense = {
         <h2 class="month-title">${Utils.formatMonth(monthKey)}</h2>
         <button class="btn-icon" onclick="Expense.nextMonth()">›</button>
       </div>
-
       <div class="expense-summary">
         <div class="summary-item">
           <span class="summary-label">Tổng chi tháng này</span>
@@ -43,7 +42,6 @@ const Expense = {
           <span class="summary-value">${monthExpenses.length}</span>
         </div>
       </div>
-
       <div class="expense-list" id="expense-list">
         ${Object.keys(grouped).length === 0 ? '<p class="empty-state">Chưa có chi tiêu nào tháng này</p>' : ''}
         ${Object.entries(grouped).map(([date, expenses]) => `
@@ -76,7 +74,7 @@ const Expense = {
     `;
   },
 
-  // Show quick add modal - COMPACT layout for iPhone
+  // === Full-screen Quick Add ===
   showQuickAdd() {
     const data = App.state.data;
     if (data.budgets.length === 0) {
@@ -87,9 +85,10 @@ const Expense = {
 
     this.inputAmount = '';
     this.scannedQR = null;
+    this.qrAmountLocked = false;
     const modal = document.getElementById('expense-modal');
 
-    // Calculate daily spending
+    // Daily spending calc
     const monthKey = Utils.getCurrentMonthKey();
     const today = Utils.getToday();
     const totalDays = Utils.getDaysInMonth(monthKey);
@@ -111,68 +110,98 @@ const Expense = {
     const dailyPct = dailyAllowance > 0 ? Math.min((todaySpent / dailyAllowance) * 100, 100) : 0;
     const dailyClass = dailyPct > 85 ? 'danger' : dailyPct > 60 ? 'warning' : 'safe';
 
+    // Bank app display
+    const bankDisplay = this._getBankDisplay();
+
     modal.innerHTML = `
-      <div class="modal-overlay" onclick="Expense.closeQuickAdd()"></div>
       <div class="modal-content quick-add-modal slide-up">
 
         <div class="quick-add-header">
           <h3>Thêm chi tiêu</h3>
-          <div class="qa-header-actions">
-            <button class="btn-icon" onclick="document.getElementById('qr-file-input').click()" title="Upload QR">📤</button>
-            <button class="btn-icon" onclick="Expense.closeQuickAdd()">✕</button>
-          </div>
-          <input type="file" id="qr-file-input" accept="image/*" style="display:none" onchange="Expense.uploadQRImage(event)">
+          <button class="btn-icon" onclick="Expense.closeQuickAdd()">✕</button>
         </div>
 
-        <div class="qa-daily-bar">
-          <div class="qa-daily-info">
-            <span>Hôm nay: <strong>${Utils.formatCompactVND(todaySpent)}</strong></span>
-            <span>/ ${Utils.formatCompactVND(dailyAllowance)}</span>
-          </div>
-          <div class="qa-daily-progress"><div class="qa-daily-fill ${dailyClass}" style="width:${dailyPct}%"></div></div>
-        </div>
-
-        <div id="qr-scanner-container"></div>
-
-        <div class="quick-add-categories" id="qa-categories">
-          ${data.budgets.map(b => {
+        <div class="qa-body">
+          <div class="quick-add-categories" id="qa-categories">
+            ${data.budgets.map(b => {
       const sel = this.lastCategoryId ? b.id === this.lastCategoryId : false;
       return `<button class="category-chip ${sel ? 'selected' : ''}" style="--chip-color:${b.color}" data-id="${b.id}" onclick="Expense.selectCategory(this)"><span>${b.icon}</span><span>${b.name}</span></button>`;
     }).join('')}
-        </div>
+          </div>
 
-        <input type="hidden" id="qa-date" value="${today}">
-        <input type="hidden" id="qa-note" value="">
+          <div class="qa-daily-bar">
+            <div class="qa-daily-info">
+              <span>Hôm nay: <strong>${Utils.formatCompactVND(todaySpent)}</strong></span>
+              <span>/ ${Utils.formatCompactVND(dailyAllowance)}</span>
+            </div>
+            <div class="qa-daily-progress"><div class="qa-daily-fill ${dailyClass}" style="width:${dailyPct}%"></div></div>
+          </div>
 
-        <div class="quick-add-display compact">
-          <span class="qa-amount" id="qa-amount">0đ</span>
-        </div>
+          <input type="hidden" id="qa-date" value="${today}">
 
-        <div class="preset-amounts">
-          ${[10, 15, 20, 25, 30, 50, 100, 200].map(v =>
+          <div class="quick-add-display compact">
+            <span class="qa-amount" id="qa-amount">0đ</span>
+          </div>
+
+          <div id="qa-numpad-section">
+            <div class="preset-amounts">
+              ${[10, 15, 20, 25, 30, 50, 100, 200].map(v =>
       `<button class="preset-btn" onclick="Expense.presetAmount(${v})">${v}k</button>`
     ).join('')}
-        </div>
-
-        <div class="numpad compact">
-          ${['1', '2', '3', '4', '5', '6', '7', '8', '9', '.', '0', '⌫'].map(key =>
+            </div>
+            <div class="numpad compact">
+              ${['1', '2', '3', '4', '5', '6', '7', '8', '9', '.', '0', '⌫'].map(key =>
       `<button class="numpad-btn ${key === '⌫' ? 'numpad-delete' : ''} ${key === '.' ? 'numpad-dot' : ''}" onclick="Expense.numpadPress('${key}')">${key === '.' ? ',5' : key}</button>`
     ).join('')}
+            </div>
+          </div>
+
+          <div class="qa-transfer-fields">
+            <div class="qa-transfer-row">
+              <span class="qa-transfer-label">🏦 Ngân hàng</span>
+              <select id="qa-bank" class="qa-transfer-input" onchange="Expense.onBankFieldChange()">
+                <option value="">Chọn ngân hàng</option>
+                ${(this.bankList || []).map(b => `<option value="${b.bin}">${b.shortName}</option>`).join('')}
+              </select>
+            </div>
+            <div class="qa-transfer-row">
+              <span class="qa-transfer-label">💳 Số TK</span>
+              <input type="text" id="qa-stk" class="qa-transfer-input" placeholder="Số tài khoản" inputmode="numeric">
+            </div>
+            <div class="qa-transfer-row">
+              <span class="qa-transfer-label">👤 Người nhận</span>
+              <input type="text" id="qa-recipient" class="qa-transfer-input" readonly placeholder="Tự động từ QR">
+            </div>
+            <div class="qa-transfer-row">
+              <span class="qa-transfer-label">📝 Nội dung</span>
+              <input type="text" id="qa-memo" class="qa-transfer-input" placeholder="Nội dung CK (tuỳ chọn)">
+            </div>
+            <div class="qa-transfer-row">
+              <span class="qa-transfer-label">✏️ Ghi chú</span>
+              <input type="text" id="qa-note" class="qa-transfer-input" placeholder="Ghi chú (tuỳ chọn)">
+            </div>
+          </div>
+
+          <div id="qr-scanner-container"></div>
+          <div id="qr-scan-banner"></div>
         </div>
 
-        <div id="qr-scan-banner"></div>
-
-        <div class="qa-bottom-row">
-          <button class="btn-save-expense" id="btn-save-expense" onclick="Expense.saveExpense()" disabled>💾 Lưu</button>
-          <div id="qa-recent-banks"></div>
+        <div class="qa-bottom-bar">
+          <div class="qa-action-row">
+            <button class="btn-bank-selector" id="btn-bank-selector" onclick="Expense.showBankPicker()">
+              ${bankDisplay}
+            </button>
+            <button class="btn-save-expense" id="btn-save-expense" onclick="Expense.saveExpense()" disabled>💾 Lưu</button>
+          </div>
+          <div class="qa-scan-row">
+            <button class="btn-upload-qr" onclick="document.getElementById('qr-file-input').click()">📤</button>
+            <button class="btn-qr-scan" onclick="Expense.startQRScanner()">
+              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 7V5a2 2 0 012-2h2M17 3h2a2 2 0 012 2v2M21 17v2a2 2 0 01-2 2h-2M7 21H5a2 2 0 01-2-2v-2"/><rect x="7" y="7" width="4" height="4"/><rect x="13" y="7" width="4" height="4"/><rect x="7" y="13" width="4" height="4"/><path d="M13 13h4v4h-4z"/></svg>
+              Quét QR
+            </button>
+            <input type="file" id="qr-file-input" accept="image/*" style="display:none" onchange="Expense.uploadQRImage(event)">
+          </div>
         </div>
-
-        <button class="btn-qr-fab" onclick="Expense.startQRScanner()">
-          <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 7V5a2 2 0 012-2h2M17 3h2a2 2 0 012 2v2M21 17v2a2 2 0 01-2 2h-2M7 21H5a2 2 0 01-2-2v-2"/><rect x="7" y="7" width="4" height="4"/><rect x="13" y="7" width="4" height="4"/><rect x="7" y="13" width="4" height="4"/><path d="M13 13h4v4h-4z"/></svg>
-        </button>
-
-        <div class="qa-bank-label">Tất cả ngân hàng:</div>
-        <div class="qa-bank-grid" id="qa-bank-grid"></div>
 
       </div>
     `;
@@ -181,62 +210,104 @@ const Expense = {
     if (!modal.querySelector('.category-chip.selected')) {
       modal.querySelector('.category-chip')?.classList.add('selected');
     }
-    this.renderBankGrid();
   },
 
-// Render recent banks (bottom row) + all banks grid
-renderBankGrid() {
-    const grid = document.getElementById('qa-bank-grid');
-    const recentEl = document.getElementById('qa-recent-banks');
-    if (!grid) return;
+  // Bank display helper
+  _getBankDisplay() {
+    if (this.selectedBankApp && this.appList) {
+      const app = this.appList.find(a => a.appId === this.selectedBankApp);
+      if (app) {
+        const n = app.appName.replace(/[\u200E\u200F]/g, '');
+        return `<img src="${app.appLogo}" class="bank-logo-sm" onerror="this.style.display='none'"><span>${n}</span><span class="bank-arrow">▾</span>`;
+      }
+    }
+    return `<span>🏦 Chọn NH</span><span class="bank-arrow">▾</span>`;
+  },
 
+  // === Bank Picker Modal ===
+  showBankPicker() {
     if (!this.appList || this.appList.length === 0) {
-        grid.innerHTML = '<p style="color:var(--text-muted);font-size:0.75rem;text-align:center">Đang tải...</p>';
-        this.loadAppList().then(() => this.renderBankGrid());
-        return;
+      this.loadAppList().then(() => this.showBankPicker());
+      return;
+    }
+
+    let overlay = document.getElementById('bank-picker-overlay');
+    if (!overlay) {
+      overlay = document.createElement('div');
+      overlay.id = 'bank-picker-overlay';
+      overlay.className = 'bank-picker-overlay';
+      document.body.appendChild(overlay);
     }
 
     const recent = JSON.parse(localStorage.getItem('xmoni_recent_banks') || '[]');
-    const appMap = {};
-    this.appList.forEach(a => appMap[a.appId] = a);
-
-    const mkBadge = (app) => {
-        if (app.appId === 'tpb') return '<span class="bank-badge tpb">\u26a1</span>';
-        if (app.autofill === 1) return '<span class="bank-badge auto">\u2713</span>';
-        return '';
-    };
-
-    // Recent banks in bottom row (max 2, same row as Save)
-    if (recentEl && recent.length > 0) {
-        const recentApps = recent.slice(0, 2).map(id => appMap[id]).filter(Boolean);
-        recentEl.innerHTML = recentApps.map(app => {
-            const n = app.appName.replace(/[\u200E\u200F]/g, '');
-            return `<button class="btn-recent-bank" onclick="Expense.saveAndPay('${app.appId}')">
-          ${mkBadge(app)}<img src="${app.appLogo}" class="bank-logo-sm" onerror="this.style.display='none'"><span>${n}</span>
-        </button>`;
-        }).join('');
-    }
-
-    // All banks grid
+    const recentApps = recent.slice(0, 5).map(id => this.appList.find(a => a.appId === id)).filter(Boolean);
     const sorted = [...this.appList].sort((a, b) => (b.monthlyInstall || 0) - (a.monthlyInstall || 0));
-    grid.innerHTML = sorted.map(app => {
-        const n = app.appName.replace(/[\u200E\u200F]/g, '');
-        return `<button class="bank-grid-btn" onclick="Expense.saveAndPay('${app.appId}')">
-        ${mkBadge(app)}<img src="${app.appLogo}" class="bank-logo" onerror="this.style.display='none'"><span>${n}</span>
-      </button>`;
-    }).join('');
-},
 
-  // Track recently used bank
-  trackRecentBank(code) {
-    let recent = JSON.parse(localStorage.getItem('xmoni_recent_banks') || '[]');
-    recent = recent.filter(c => c !== code);
-    recent.unshift(code);
-    recent = recent.slice(0, 10); // keep top 10
-    localStorage.setItem('xmoni_recent_banks', JSON.stringify(recent));
+    overlay.innerHTML = `
+      <div class="bank-picker-sheet" onclick="event.stopPropagation()">
+        <div class="bank-picker-header">
+          <h3>Chọn ứng dụng ngân hàng</h3>
+          <button class="bank-picker-close" onclick="Expense.closeBankPicker()">✕</button>
+        </div>
+        <div class="bank-picker-search">
+          <input type="text" placeholder="🔍 Tìm kiếm" id="bank-search-input" oninput="Expense.filterBanks(this.value)">
+        </div>
+        <div class="bank-picker-body" id="bank-picker-body">
+          ${recentApps.length > 0 ? `
+            <div class="bank-picker-section-title">Ngân hàng đề xuất</div>
+            <div class="bank-picker-grid" id="bank-recent-grid">
+              ${recentApps.map(app => this._bankPickerItem(app)).join('')}
+            </div>
+          ` : ''}
+          <div class="bank-picker-section-title">Tất cả ngân hàng</div>
+          <div class="bank-picker-grid" id="bank-all-grid">
+            ${sorted.map(app => this._bankPickerItem(app)).join('')}
+          </div>
+        </div>
+      </div>
+    `;
+
+    overlay.onclick = () => this.closeBankPicker();
+    overlay.classList.add('active');
   },
 
-  // Category selection
+  _bankPickerItem(app) {
+    const n = app.appName.replace(/[\u200E\u200F]/g, '');
+    const selected = this.selectedBankApp === app.appId ? 'selected' : '';
+    return `<button class="bank-picker-item ${selected}" data-id="${app.appId}" onclick="event.stopPropagation();Expense.selectBankApp('${app.appId}')">
+      <img src="${app.appLogo}" onerror="this.style.display='none'">
+      <span>${n}</span>
+    </button>`;
+  },
+
+  filterBanks(query) {
+    const q = query.toLowerCase().trim();
+    const grid = document.getElementById('bank-all-grid');
+    if (!grid) return;
+    grid.querySelectorAll('.bank-picker-item').forEach(item => {
+      const name = item.querySelector('span')?.textContent?.toLowerCase() || '';
+      item.style.display = !q || name.includes(q) ? '' : 'none';
+    });
+  },
+
+  selectBankApp(appId) {
+    this.selectedBankApp = appId;
+    localStorage.setItem('xmoni_selected_bank', appId);
+    this.trackRecentBank(appId);
+
+    // Update selector button
+    const btn = document.getElementById('btn-bank-selector');
+    if (btn) btn.innerHTML = this._getBankDisplay();
+
+    this.closeBankPicker();
+  },
+
+  closeBankPicker() {
+    const overlay = document.getElementById('bank-picker-overlay');
+    if (overlay) overlay.classList.remove('active');
+  },
+
+  // === Category ===
   selectCategory(btn) {
     document.querySelectorAll('.category-chip').forEach(c => c.classList.remove('selected'));
     btn.classList.add('selected');
@@ -244,8 +315,9 @@ renderBankGrid() {
     localStorage.setItem('xmoni_last_category', btn.dataset.id);
   },
 
-  // Preset amount - one tap
+  // === Amount Input ===
   presetAmount(k) {
+    if (this.qrAmountLocked) return;
     this.inputAmount = k.toString();
     const realAmount = k * 1000;
     const display = document.getElementById('qa-amount');
@@ -253,11 +325,11 @@ renderBankGrid() {
     display.classList.add('has-value');
     document.getElementById('btn-save-expense').disabled = false;
     document.querySelectorAll('.preset-btn').forEach(b => b.classList.remove('active'));
-    event.target.classList.add('active');
+    if (event && event.target) event.target.classList.add('active');
   },
 
-  // Numpad input (x1000)
   numpadPress(key) {
+    if (this.qrAmountLocked) return;
     if (key === '⌫') {
       this.inputAmount = this.inputAmount.slice(0, -1);
     } else if (key === '.') {
@@ -277,7 +349,7 @@ renderBankGrid() {
     document.getElementById('btn-save-expense').disabled = realAmount === 0;
   },
 
-  // Save expense
+  // === Save Expense ===
   saveExpense() {
     const parsed = parseFloat(this.inputAmount) || 0;
     const amount = Math.round(parsed * 1000);
@@ -289,87 +361,119 @@ renderBankGrid() {
       return;
     }
 
+    // Build note from transfer fields
+    const note = this._buildNote();
+
     const expense = {
       id: Utils.generateId(),
       date: document.getElementById('qa-date').value,
       budgetId: selectedChip.dataset.id,
       amount,
-      note: (document.getElementById('qa-note').value || '').trim(),
+      note,
     };
 
+    // Build metadata if transfer info present
+    const stk = (document.getElementById('qa-stk')?.value || '').trim();
+    let metadata = null;
+    if (stk) {
+      const bankEl = document.getElementById('qa-bank');
+      const bankOption = bankEl?.options[bankEl.selectedIndex];
+      metadata = {
+        expense_id: expense.id,
+        qr_bank: bankOption && bankOption.value ? bankOption.text : '',
+        qr_account: stk,
+        qr_recipient: (document.getElementById('qa-recipient')?.value || '').trim(),
+        qr_memo: (document.getElementById('qa-memo')?.value || '').trim(),
+      };
+    }
+
     App.state.data.expenses.push(expense);
+    if (metadata) {
+      if (!App.state.data.expenseMetadata) App.state.data.expenseMetadata = [];
+      App.state.data.expenseMetadata.push(metadata);
+    }
     Drive.queueSave(App.state.data);
+
+    // If bank app selected, open deep link
+    if (this.selectedBankApp && stk) {
+      this._openBankDeepLink(amount);
+    }
+
     this.closeQuickAdd();
     Utils.showToast(`Đã lưu -${Utils.formatVND(amount)}`, 'success');
     if (App.state.currentView === 'expenses') this.render();
     if (App.state.currentView === 'dashboard') Dashboard.render();
   },
 
-  // Delete expense
-  deleteExpense(id) {
-    if (!confirm('Xóa khoản chi này?')) return;
-    App.state.data.expenses = App.state.data.expenses.filter(e => e.id !== id);
-    Drive.queueSave(App.state.data);
-    this.render();
-    Utils.showToast('Đã xóa');
+  _buildNote() {
+    const parts = [];
+    const stk = (document.getElementById('qa-stk')?.value || '').trim();
+    const recipient = (document.getElementById('qa-recipient')?.value || '').trim();
+    const memo = (document.getElementById('qa-memo')?.value || '').trim();
+    const note = (document.getElementById('qa-note')?.value || '').trim();
+
+    if (stk) parts.push(`STK: ${stk}`);
+    if (recipient) parts.push(recipient);
+    if (memo) parts.push(memo);
+    if (note) parts.push(note);
+    return parts.join(' | ');
   },
 
-  // Save expense then open banking app (or show QR if scanned)
-  saveAndPay(app) {
-    const parsed = parseFloat(this.inputAmount) || 0;
-    const amount = Math.round(parsed * 1000);
-
-    // Save the expense
-    if (amount > 0) {
-      const selectedChip = document.querySelector('.category-chip.selected');
-      if (selectedChip) {
-        const expense = {
-          id: Utils.generateId(),
-          date: document.getElementById('qa-date').value,
-          budgetId: selectedChip.dataset.id,
-          amount,
-          note: (document.getElementById('qa-note').value || '').trim(),
-        };
-        App.state.data.expenses.push(expense);
-        Drive.queueSave(App.state.data);
-        Utils.showToast(`Đã lưu -${Utils.formatVND(amount)}`, 'success');
-        if (App.state.currentView === 'expenses') this.render();
-        if (App.state.currentView === 'dashboard') Dashboard.render();
-      }
-    }
-
-    // Build deep link
+  _openBankDeepLink(amount) {
+    const app = this.selectedBankApp;
     let deeplink = `https://dl.vietqr.io/pay?app=${app}`;
+
     if (this.scannedQR && this.scannedQR.accountNo) {
       const qr = this.scannedQR;
       const bankCode = qr.bankCode || qr.bankBin;
-      const memo = qr.addInfo || 'XMoni';
+      const memo = (document.getElementById('qa-memo')?.value || '').trim() || qr.addInfo || 'XMoni';
       const name = qr.accountName || '';
 
-      // TPBank: use hydro:// scheme with raw QR content (works on both iOS & Android)
       if (app === 'tpb' && qr.rawText) {
-        // Rebuild QR with user's amount if different
         let qrContent = qr.rawText;
         if (amount > 0 && amount !== qr.amount) {
           qrContent = this.rebuildQRWithAmount(qr.rawText, amount);
         }
         deeplink = `hydro://applink?targetPage=QRPay&source=XMoni&qrContent=${encodeURIComponent(qrContent)}&callbackurl=${encodeURIComponent('https://levutuannghi.github.io/xmoni/')}`;
       } else {
-        // Standard VietQR deep link (all banks)
         deeplink += `&ba=${qr.accountNo}@${bankCode}`;
         deeplink += `&am=${amount > 0 ? amount : 0}`;
         deeplink += `&tn=${encodeURIComponent(memo)}`;
         if (name) deeplink += `&bn=${encodeURIComponent(name)}`;
         deeplink += `&url=${encodeURIComponent('https://levutuannghi.github.io/xmoni/')}`;
       }
+    } else {
+      const stk = (document.getElementById('qa-stk')?.value || '').trim();
+      const bankEl = document.getElementById('qa-bank');
+      const bankBin = bankEl?.value || '';
+      const bank = this.lookupBank(bankBin);
+      const memo = (document.getElementById('qa-memo')?.value || '').trim() || 'XMoni';
+
+      if (stk && bank) {
+        deeplink += `&ba=${stk}@${bank.code}`;
+        deeplink += `&am=${amount > 0 ? amount : 0}`;
+        deeplink += `&tn=${encodeURIComponent(memo)}`;
+        deeplink += `&url=${encodeURIComponent('https://levutuannghi.github.io/xmoni/')}`;
+      }
     }
 
     this.trackRecentBank(app);
-    this.closeQuickAdd();
-    window.location.href = deeplink;
+    setTimeout(() => { window.location.href = deeplink; }, 100);
   },
 
-  // ===== QR Scanner (qr-scanner by Nimiq) =====
+  // === Delete expense ===
+  deleteExpense(id) {
+    if (!confirm('Xóa khoản chi này?')) return;
+    App.state.data.expenses = App.state.data.expenses.filter(e => e.id !== id);
+    if (App.state.data.expenseMetadata) {
+      App.state.data.expenseMetadata = App.state.data.expenseMetadata.filter(m => m.expense_id !== id);
+    }
+    Drive.queueSave(App.state.data);
+    this.render();
+    Utils.showToast('Đã xóa');
+  },
+
+  // === QR Scanner ===
   qrScanner: null,
 
   startQRScanner() {
@@ -401,7 +505,7 @@ renderBankGrid() {
         this.qrScanner = null;
       });
     } catch (err) {
-      container.innerHTML = `<p style="color:var(--accent-danger);text-align:center;padding:8px;font-size:0.8rem">Kh\u00f4ng h\u1ed7 tr\u1ee3 camera</p>`;
+      container.innerHTML = `<p style="color:var(--accent-danger);text-align:center;padding:8px;font-size:0.8rem">Không hỗ trợ camera</p>`;
       this.qrScanner = null;
     }
   },
@@ -412,7 +516,6 @@ renderBankGrid() {
     if (c) c.innerHTML = '';
   },
 
-  // Upload QR image from gallery
   async uploadQRImage(event) {
     const file = event.target.files[0];
     if (!file) return;
@@ -422,21 +525,125 @@ renderBankGrid() {
     } catch (err) {
       const banner = document.getElementById('qr-scan-banner');
       if (banner) {
-        banner.innerHTML = '<div class="qr-banner error">\u274c Kh\u00f4ng t\u00ecm th\u1ea5y m\u00e3 QR trong \u1ea3nh</div>';
+        banner.innerHTML = '<div class="qr-banner error">\u274c Không tìm thấy mã QR trong ảnh</div>';
         setTimeout(() => banner.innerHTML = '', 3000);
       }
     }
     event.target.value = '';
   },
 
-  // Rebuild EMVCo QR string with a new amount (Tag 54)
+  onQRScanned(text) {
+    this.stopQRScanner();
+
+    const tlv = this.parseEMVCo(text);
+    const tag38 = tlv['38'];
+    const banner = document.getElementById('qr-scan-banner');
+
+    if (!tag38) {
+      if (banner) {
+        banner.innerHTML = '<div class="qr-banner error">❌ Không phải mã VietQR</div>';
+        setTimeout(() => banner.innerHTML = '', 3000);
+      }
+      return;
+    }
+
+    const tag38Data = this.parseEMVCo(tag38);
+    const merchantData = this.parseEMVCo(tag38Data['01'] || '');
+    const bankBin = merchantData['00'] || '';
+    const accountNo = merchantData['01'] || '';
+    const amount = tlv['54'] ? parseInt(tlv['54']) : 0;
+    const accountName = tlv['59'] || '';
+
+    let addInfo = '';
+    if (tlv['62']) { const t62 = this.parseEMVCo(tlv['62']); addInfo = t62['08'] || ''; }
+
+    const bank = this.lookupBank(bankBin);
+    const bankName = bank ? bank.shortName : bankBin;
+    const bankCode = bank ? bank.code : null;
+
+    this.scannedQR = { bankBin, accountNo, amount, addInfo, bankName, accountName, bankCode, rawText: text };
+
+    // Auto-fill transfer fields
+    const bankSelect = document.getElementById('qa-bank');
+    if (bankSelect && bankBin) {
+      for (let i = 0; i < bankSelect.options.length; i++) {
+        if (bankSelect.options[i].value === bankBin) {
+          bankSelect.selectedIndex = i;
+          break;
+        }
+      }
+    }
+
+    const stkInput = document.getElementById('qa-stk');
+    if (stkInput && accountNo) stkInput.value = accountNo;
+
+    const recipientInput = document.getElementById('qa-recipient');
+    if (recipientInput && accountName) recipientInput.value = accountName;
+
+    const memoInput = document.getElementById('qa-memo');
+    if (memoInput && addInfo) memoInput.value = addInfo;
+
+    // Auto-fill amount + lock numpad if QR has amount
+    if (amount > 0) {
+      this.inputAmount = (amount / 1000).toString();
+      const display = document.getElementById('qa-amount');
+      if (display) {
+        display.textContent = Utils.formatVND(amount);
+        display.classList.add('has-value');
+        display.classList.add('locked');
+      }
+      const btn = document.getElementById('btn-save-expense');
+      if (btn) btn.disabled = false;
+
+      // Hide numpad
+      this.qrAmountLocked = true;
+      const numpadSection = document.getElementById('qa-numpad-section');
+      if (numpadSection) numpadSection.style.display = 'none';
+    }
+
+    if (banner) {
+      banner.innerHTML = `<div class="qr-banner success"><span>✅ ${bankName} • ${accountNo}${accountName ? ' • ' + accountName : ''}</span></div>`;
+    }
+
+    Utils.showToast('Đã quét QR!', 'success');
+  },
+
+  onBankFieldChange() {
+    // No-op for now, bank dropdown in transfer fields
+  },
+
+  // === Helpers ===
+  closeQuickAdd() {
+    this.stopQRScanner();
+    document.getElementById('expense-modal').classList.remove('active');
+    this.inputAmount = '';
+    this.scannedQR = null;
+    this.qrAmountLocked = false;
+  },
+
+  trackRecentBank(code) {
+    let recent = JSON.parse(localStorage.getItem('xmoni_recent_banks') || '[]');
+    recent = recent.filter(c => c !== code);
+    recent.unshift(code);
+    recent = recent.slice(0, 10);
+    localStorage.setItem('xmoni_recent_banks', JSON.stringify(recent));
+  },
+
+  prevMonth() {
+    App.state.selectedMonth = Utils.getPrevMonthKey(App.state.selectedMonth);
+    this.render();
+  },
+
+  nextMonth() {
+    App.state.selectedMonth = Utils.getNextMonthKey(App.state.selectedMonth);
+    this.render();
+  },
+
+  // === EMVCo / VietQR parsing ===
   rebuildQRWithAmount(raw, newAmount) {
-    // Remove existing CRC (Tag 63, always last 8 chars: 6304XXXX)
     let base = raw.replace(/6304[A-F0-9]{4}$/i, '');
-    // Remove existing Tag 54 if present
     const amtStr = newAmount.toString();
     base = base.replace(/54\d{2}[0-9]+/, '');
-    // Insert Tag 54 before Tag 58 (country) or at end
     const tag54 = `54${amtStr.length.toString().padStart(2, '0')}${amtStr}`;
     const idx58 = base.indexOf('5802');
     if (idx58 > 0) {
@@ -444,7 +651,6 @@ renderBankGrid() {
     } else {
       base += tag54;
     }
-    // Recalculate CRC16 (CRC-CCITT)
     base += '6304';
     let crc = 0xFFFF;
     for (let i = 0; i < base.length; i++) {
@@ -457,7 +663,6 @@ renderBankGrid() {
     return base + crc.toString(16).toUpperCase().padStart(4, '0');
   },
 
-  // Parse EMVCo TLV (VietQR / NAPAS format)
   parseEMVCo(data) {
     const r = {};
     let i = 0;
@@ -471,7 +676,6 @@ renderBankGrid() {
     return r;
   },
 
-  // Bank list (for BIN lookup) and app list (for deep links)
   bankList: null,
   appList: null,
 
@@ -520,84 +724,5 @@ renderBankGrid() {
     const bank = this.bankList.find(b => b.bin === bin);
     if (!bank) return null;
     return { code: bank.code.toLowerCase(), shortName: bank.shortName, bin: bank.bin };
-  },
-
-  onQRScanned(text) {
-    this.stopQRScanner();
-
-    const tlv = this.parseEMVCo(text);
-    const tag38 = tlv['38'];
-    const banner = document.getElementById('qr-scan-banner');
-
-    if (!tag38) {
-      banner.innerHTML = '<div class="qr-banner error">❌ Không phải mã VietQR</div>';
-      setTimeout(() => banner.innerHTML = '', 3000);
-      return;
-    }
-
-    // 3-level parse: Tag38 → Sub01 (merchant data) → Sub00 (BIN) + Sub01 (account)
-    const tag38Data = this.parseEMVCo(tag38);
-    const merchantData = this.parseEMVCo(tag38Data['01'] || '');
-    const bankBin = merchantData['00'] || '';
-    const accountNo = merchantData['01'] || '';
-
-    // Tag 54 = amount, Tag 59 = account holder name
-    const amount = tlv['54'] ? parseInt(tlv['54']) : 0;
-    const accountName = tlv['59'] || '';
-
-    // Tag 62 = additional data (sub-tag 08 = memo)
-    let addInfo = '';
-    if (tlv['62']) { const t62 = this.parseEMVCo(tlv['62']); addInfo = t62['08'] || ''; }
-
-    const bank = this.lookupBank(bankBin);
-    const bankName = bank ? bank.shortName : bankBin;
-    const bankCode = bank ? bank.code : null;
-
-    // Store scanned data (including raw text for TPBank hydro:// scheme)
-    this.scannedQR = { bankBin, accountNo, amount, addInfo, bankName, accountName, bankCode, rawText: text };
-
-    // Show banner with scanned info
-    banner.innerHTML = `
-      <div class="qr-banner success">
-        <span>✅ ${bankName} • ${accountNo}${accountName ? ' • ' + accountName : ''}${amount > 0 ? ' • ' + Utils.formatCompactVND(amount) : ''}</span>
-      </div>
-    `;
-
-
-
-    // Auto-fill amount
-    if (amount > 0) {
-      this.inputAmount = (amount / 1000).toString();
-      const display = document.getElementById('qa-amount');
-      if (display) { display.textContent = Utils.formatVND(amount); display.classList.add('has-value'); }
-      const btn = document.getElementById('btn-save-expense');
-      if (btn) btn.disabled = false;
-    }
-
-    // Auto-fill note with account name or memo
-    const noteVal = addInfo || accountName;
-    if (noteVal) {
-      const note = document.getElementById('qa-note');
-      if (note) note.value = noteVal;
-    }
-
-    Utils.showToast('Đã quét QR!', 'success');
-  },
-
-  closeQuickAdd() {
-    this.stopQRScanner();
-    document.getElementById('expense-modal').classList.remove('active');
-    this.inputAmount = '';
-    this.scannedQR = null;
-  },
-
-  prevMonth() {
-    App.state.selectedMonth = Utils.getPrevMonthKey(App.state.selectedMonth);
-    this.render();
-  },
-
-  nextMonth() {
-    App.state.selectedMonth = Utils.getNextMonthKey(App.state.selectedMonth);
-    this.render();
   },
 };

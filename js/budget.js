@@ -3,16 +3,17 @@
 // ============================================
 
 const Budget = {
-    // Render budget settings page
-    render() {
-        const container = document.getElementById('view-budgets');
-        const monthKey = App.state.selectedMonth;
-        const data = App.state.data;
+  // Render budget settings page
+  render() {
+    const container = document.getElementById('view-budgets');
+    const monthKey = App.state.selectedMonth;
+    const data = App.state.data;
+    const totalDays = Utils.getDaysInMonth(monthKey);
 
-        // Calculate carryover for display
-        const carryovers = this.calculateCarryovers(monthKey);
+    // Calculate carryover for display
+    const carryovers = this.calculateCarryovers(monthKey);
 
-        container.innerHTML = `
+    container.innerHTML = `
       <div class="month-nav">
         <button class="btn-icon" onclick="Budget.prevMonth()">‹</button>
         <h2 class="month-title">${Utils.formatMonth(monthKey)}</h2>
@@ -27,10 +28,13 @@ const Budget = {
       <div class="budget-cards" id="budget-cards">
         ${data.budgets.length === 0 ? '<p class="empty-state">Chưa có danh mục nào. Tạo danh mục đầu tiên!</p>' : ''}
         ${data.budgets.map(b => {
-            const monthly = (data.monthlyBudgets[monthKey] || {})[b.id] || {};
-            const amount = monthly.amount || 0;
-            const carryover = carryovers[b.id] || 0;
-            return `
+      const monthly = (data.monthlyBudgets[monthKey] || {})[b.id] || {};
+      const amount = monthly.amount || 0;
+      const carryover = carryovers[b.id] || 0;
+      const mode = this.getBudgetMode(b.id);
+      const dailyValue = totalDays > 0 ? Math.round(amount / totalDays) : 0;
+      const displayValue = mode === 'daily' ? dailyValue : amount;
+      return `
             <div class="budget-card" style="--accent: ${b.color}">
               <div class="budget-card-header">
                 <span class="budget-icon">${b.icon}</span>
@@ -40,16 +44,25 @@ const Budget = {
                   <button class="btn-icon-sm" onclick="Budget.deleteCategory('${b.id}')">🗑️</button>
                 </div>
               </div>
+              <div class="budget-mode-toggle">
+                <button class="budget-mode-btn ${mode === 'daily' ? 'active' : ''}" onclick="Budget.setMode('${b.id}', 'daily')">/ ngày</button>
+                <button class="budget-mode-btn ${mode === 'total' ? 'active' : ''}" onclick="Budget.setMode('${b.id}', 'total')">Tổng</button>
+              </div>
               <div class="budget-amount-row">
-                <label>Budget tháng này</label>
+                <label>${mode === 'daily' ? 'Chi / ngày' : 'Budget tháng này'}</label>
                 <div class="input-vnd">
-                  <input type="text" inputmode="numeric" value="${amount ? amount.toLocaleString('vi-VN') : ''}" 
+                  <input type="text" inputmode="numeric" value="${displayValue ? displayValue.toLocaleString('vi-VN') : ''}" 
                     placeholder="0" 
                     onchange="Budget.setMonthlyAmount('${b.id}', this.value)"
                     onfocus="this.select()">
                   <span>đ</span>
                 </div>
               </div>
+              ${mode === 'daily' ? `
+                <div class="budget-effective" style="margin-top:4px">
+                  Tổng tháng: <strong>${Utils.formatVND(amount)}</strong> (${totalDays} ngày)
+                </div>
+              ` : ''}
               ${carryover !== 0 ? `
                 <div class="budget-carryover ${carryover >= 0 ? 'positive' : 'negative'}">
                   ${carryover >= 0 ? '🟢 Dư tháng trước: +' : '🔴 Nợ tháng trước: '}${Utils.formatVND(carryover)}
@@ -60,7 +73,7 @@ const Budget = {
               </div>
             </div>
           `;
-        }).join('')}
+    }).join('')}
       </div>
 
       <div class="budget-actions">
@@ -69,142 +82,160 @@ const Budget = {
         </button>
       </div>
     `;
-    },
+  },
 
-    // Calculate carryovers for a given month
-    calculateCarryovers(monthKey) {
-        const data = App.state.data;
-        const prevMonth = Utils.getPrevMonthKey(monthKey);
-        const carryovers = {};
+  // Budget input mode (daily / total)
+  getBudgetMode(budgetId) {
+    return localStorage.getItem(`xmoni_bmode_${budgetId}`) || 'total';
+  },
 
-        data.budgets.forEach(b => {
-            const prevBudget = (data.monthlyBudgets[prevMonth] || {})[b.id];
-            if (!prevBudget) {
-                carryovers[b.id] = 0;
-                return;
-            }
+  setMode(budgetId, mode) {
+    localStorage.setItem(`xmoni_bmode_${budgetId}`, mode);
+    this.render();
+  },
 
-            const budgetAmount = prevBudget.amount || 0;
-            const prevCarryover = this.getCarryoverRecursive(prevMonth, b.id);
-            const totalSpent = this.getTotalSpent(prevMonth, b.id);
-            carryovers[b.id] = budgetAmount + prevCarryover - totalSpent;
-        });
+  // Calculate carryovers for a given month
+  calculateCarryovers(monthKey) {
+    const data = App.state.data;
+    const prevMonth = Utils.getPrevMonthKey(monthKey);
+    const carryovers = {};
 
-        return carryovers;
-    },
+    data.budgets.forEach(b => {
+      const prevBudget = (data.monthlyBudgets[prevMonth] || {})[b.id];
+      if (!prevBudget) {
+        carryovers[b.id] = 0;
+        return;
+      }
 
-    // Recursive carryover calculation
-    getCarryoverRecursive(monthKey, budgetId) {
-        const data = App.state.data;
-        const prevMonth = Utils.getPrevMonthKey(monthKey);
-        const prevBudget = (data.monthlyBudgets[prevMonth] || {})[budgetId];
+      const budgetAmount = prevBudget.amount || 0;
+      const prevCarryover = this.getCarryoverRecursive(prevMonth, b.id);
+      const totalSpent = this.getTotalSpent(prevMonth, b.id);
+      carryovers[b.id] = budgetAmount + prevCarryover - totalSpent;
+    });
 
-        if (!prevBudget) return 0;
+    return carryovers;
+  },
 
-        const budgetAmount = prevBudget.amount || 0;
-        const prevCarryover = this.getCarryoverRecursive(prevMonth, budgetId);
-        const totalSpent = this.getTotalSpent(prevMonth, budgetId);
-        return budgetAmount + prevCarryover - totalSpent;
-    },
+  // Recursive carryover calculation
+  getCarryoverRecursive(monthKey, budgetId) {
+    const data = App.state.data;
+    const prevMonth = Utils.getPrevMonthKey(monthKey);
+    const prevBudget = (data.monthlyBudgets[prevMonth] || {})[budgetId];
 
-    // Get total spent for a budget in a month
-    getTotalSpent(monthKey, budgetId) {
-        return App.state.data.expenses
-            .filter(e => Utils.getMonthKey(e.date) === monthKey && e.budgetId === budgetId)
-            .reduce((sum, e) => sum + e.amount, 0);
-    },
+    if (!prevBudget) return 0;
 
-    // Navigate months
-    prevMonth() {
-        App.state.selectedMonth = Utils.getPrevMonthKey(App.state.selectedMonth);
-        this.render();
-    },
+    const budgetAmount = prevBudget.amount || 0;
+    const prevCarryover = this.getCarryoverRecursive(prevMonth, budgetId);
+    const totalSpent = this.getTotalSpent(prevMonth, budgetId);
+    return budgetAmount + prevCarryover - totalSpent;
+  },
 
-    nextMonth() {
-        App.state.selectedMonth = Utils.getNextMonthKey(App.state.selectedMonth);
-        this.render();
-    },
+  // Get total spent for a budget in a month
+  getTotalSpent(monthKey, budgetId) {
+    return App.state.data.expenses
+      .filter(e => Utils.getMonthKey(e.date) === monthKey && e.budgetId === budgetId)
+      .reduce((sum, e) => sum + e.amount, 0);
+  },
 
-    // Set monthly budget amount
-    setMonthlyAmount(budgetId, valueStr) {
-        const amount = Utils.parseVND(valueStr);
-        const monthKey = App.state.selectedMonth;
-        const data = App.state.data;
+  // Navigate months
+  prevMonth() {
+    App.state.selectedMonth = Utils.getPrevMonthKey(App.state.selectedMonth);
+    this.render();
+  },
 
-        if (!data.monthlyBudgets[monthKey]) {
-            data.monthlyBudgets[monthKey] = {};
-        }
-        if (!data.monthlyBudgets[monthKey][budgetId]) {
-            data.monthlyBudgets[monthKey][budgetId] = {};
-        }
-        data.monthlyBudgets[monthKey][budgetId].amount = amount;
+  nextMonth() {
+    App.state.selectedMonth = Utils.getNextMonthKey(App.state.selectedMonth);
+    this.render();
+  },
 
-        Drive.queueSave(data);
-        this.render();
-        Utils.showToast('Đã cập nhật budget');
-    },
+  // Set monthly budget amount
+  setMonthlyAmount(budgetId, valueStr) {
+    const inputValue = Utils.parseVND(valueStr);
+    const monthKey = App.state.selectedMonth;
+    const data = App.state.data;
+    const mode = this.getBudgetMode(budgetId);
 
-    // Copy budgets from previous month
-    copyFromPrevMonth() {
-        const data = App.state.data;
-        const monthKey = App.state.selectedMonth;
-        const prevMonth = Utils.getPrevMonthKey(monthKey);
-        const prevBudgets = data.monthlyBudgets[prevMonth];
+    // If daily mode, multiply by days in month
+    let amount = inputValue;
+    if (mode === 'daily') {
+      const totalDays = Utils.getDaysInMonth(monthKey);
+      amount = inputValue * totalDays;
+    }
 
-        if (!prevBudgets) {
-            Utils.showToast('Tháng trước chưa có budget', 'error');
-            return;
-        }
+    if (!data.monthlyBudgets[monthKey]) {
+      data.monthlyBudgets[monthKey] = {};
+    }
+    if (!data.monthlyBudgets[monthKey][budgetId]) {
+      data.monthlyBudgets[monthKey][budgetId] = {};
+    }
+    data.monthlyBudgets[monthKey][budgetId].amount = amount;
 
-        if (!data.monthlyBudgets[monthKey]) {
-            data.monthlyBudgets[monthKey] = {};
-        }
+    Drive.queueSave(data);
+    this.render();
+    Utils.showToast('Đã cập nhật budget');
+  },
 
-        data.budgets.forEach(b => {
-            if (prevBudgets[b.id]) {
-                data.monthlyBudgets[monthKey][b.id] = {
-                    ...data.monthlyBudgets[monthKey][b.id],
-                    amount: prevBudgets[b.id].amount || 0,
-                };
-            }
-        });
+  // Copy budgets from previous month
+  copyFromPrevMonth() {
+    const data = App.state.data;
+    const monthKey = App.state.selectedMonth;
+    const prevMonth = Utils.getPrevMonthKey(monthKey);
+    const prevBudgets = data.monthlyBudgets[prevMonth];
 
-        Drive.queueSave(data);
-        this.render();
-        Utils.showToast('Đã copy budget từ tháng trước');
-    },
+    if (!prevBudgets) {
+      Utils.showToast('Tháng trước chưa có budget', 'error');
+      return;
+    }
 
-    // Show add category modal
-    showAddCategory() {
-        this.showCategoryModal();
-    },
+    if (!data.monthlyBudgets[monthKey]) {
+      data.monthlyBudgets[monthKey] = {};
+    }
 
-    // Edit category
-    editCategory(id) {
-        const budget = App.state.data.budgets.find(b => b.id === id);
-        if (budget) this.showCategoryModal(budget);
-    },
+    data.budgets.forEach(b => {
+      if (prevBudgets[b.id]) {
+        data.monthlyBudgets[monthKey][b.id] = {
+          ...data.monthlyBudgets[monthKey][b.id],
+          amount: prevBudgets[b.id].amount || 0,
+        };
+      }
+    });
 
-    // Delete category
-    deleteCategory(id) {
-        const budget = App.state.data.budgets.find(b => b.id === id);
-        if (!budget) return;
+    Drive.queueSave(data);
+    this.render();
+    Utils.showToast('Đã copy budget từ tháng trước');
+  },
 
-        if (!confirm(`Xóa danh mục "${budget.name}"? Dữ liệu chi tiêu liên quan sẽ giữ lại.`)) return;
+  // Show add category modal
+  showAddCategory() {
+    this.showCategoryModal();
+  },
 
-        App.state.data.budgets = App.state.data.budgets.filter(b => b.id !== id);
-        Drive.queueSave(App.state.data);
-        this.render();
-        Utils.showToast('Đã xóa danh mục');
-    },
+  // Edit category
+  editCategory(id) {
+    const budget = App.state.data.budgets.find(b => b.id === id);
+    if (budget) this.showCategoryModal(budget);
+  },
 
-    // Show category creation/edit modal
-    showCategoryModal(existing = null) {
-        const modal = document.getElementById('category-modal');
-        const selectedIcon = existing ? existing.icon : Utils.EMOJI_LIST[0];
-        const selectedColor = existing ? existing.color : Utils.COLOR_LIST[0];
+  // Delete category
+  deleteCategory(id) {
+    const budget = App.state.data.budgets.find(b => b.id === id);
+    if (!budget) return;
 
-        modal.innerHTML = `
+    if (!confirm(`Xóa danh mục "${budget.name}"? Dữ liệu chi tiêu liên quan sẽ giữ lại.`)) return;
+
+    App.state.data.budgets = App.state.data.budgets.filter(b => b.id !== id);
+    Drive.queueSave(App.state.data);
+    this.render();
+    Utils.showToast('Đã xóa danh mục');
+  },
+
+  // Show category creation/edit modal
+  showCategoryModal(existing = null) {
+    const modal = document.getElementById('category-modal');
+    const selectedIcon = existing ? existing.icon : Utils.EMOJI_LIST[0];
+    const selectedColor = existing ? existing.color : Utils.COLOR_LIST[0];
+
+    modal.innerHTML = `
       <div class="modal-overlay" onclick="Budget.closeCategoryModal()"></div>
       <div class="modal-content slide-up">
         <h3>${existing ? 'Sửa danh mục' : 'Thêm danh mục mới'}</h3>
@@ -246,56 +277,56 @@ const Budget = {
       </div>
     `;
 
-        modal.classList.add('active');
-    },
+    modal.classList.add('active');
+  },
 
-    selectEmoji(btn, emoji) {
-        document.querySelectorAll('.emoji-btn').forEach(b => b.classList.remove('selected'));
-        btn.classList.add('selected');
-        document.getElementById('cat-icon').value = emoji;
-    },
+  selectEmoji(btn, emoji) {
+    document.querySelectorAll('.emoji-btn').forEach(b => b.classList.remove('selected'));
+    btn.classList.add('selected');
+    document.getElementById('cat-icon').value = emoji;
+  },
 
-    selectColor(btn, color) {
-        document.querySelectorAll('.color-btn').forEach(b => b.classList.remove('selected'));
-        btn.classList.add('selected');
-        document.getElementById('cat-color').value = color;
-    },
+  selectColor(btn, color) {
+    document.querySelectorAll('.color-btn').forEach(b => b.classList.remove('selected'));
+    btn.classList.add('selected');
+    document.getElementById('cat-color').value = color;
+  },
 
-    saveCategory(existingId) {
-        const name = document.getElementById('cat-name').value.trim();
-        const icon = document.getElementById('cat-icon').value;
-        const color = document.getElementById('cat-color').value;
+  saveCategory(existingId) {
+    const name = document.getElementById('cat-name').value.trim();
+    const icon = document.getElementById('cat-icon').value;
+    const color = document.getElementById('cat-color').value;
 
-        if (!name) {
-            Utils.showToast('Vui lòng nhập tên danh mục', 'error');
-            return;
-        }
+    if (!name) {
+      Utils.showToast('Vui lòng nhập tên danh mục', 'error');
+      return;
+    }
 
-        const data = App.state.data;
+    const data = App.state.data;
 
-        if (existingId) {
-            const budget = data.budgets.find(b => b.id === existingId);
-            if (budget) {
-                budget.name = name;
-                budget.icon = icon;
-                budget.color = color;
-            }
-        } else {
-            data.budgets.push({
-                id: Utils.generateId(),
-                name,
-                icon,
-                color,
-            });
-        }
+    if (existingId) {
+      const budget = data.budgets.find(b => b.id === existingId);
+      if (budget) {
+        budget.name = name;
+        budget.icon = icon;
+        budget.color = color;
+      }
+    } else {
+      data.budgets.push({
+        id: Utils.generateId(),
+        name,
+        icon,
+        color,
+      });
+    }
 
-        Drive.queueSave(data);
-        this.closeCategoryModal();
-        this.render();
-        Utils.showToast(existingId ? 'Đã cập nhật' : 'Đã tạo danh mục mới');
-    },
+    Drive.queueSave(data);
+    this.closeCategoryModal();
+    this.render();
+    Utils.showToast(existingId ? 'Đã cập nhật' : 'Đã tạo danh mục mới');
+  },
 
-    closeCategoryModal() {
-        document.getElementById('category-modal').classList.remove('active');
-    },
+  closeCategoryModal() {
+    document.getElementById('category-modal').classList.remove('active');
+  },
 };

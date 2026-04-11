@@ -9,6 +9,7 @@ const Drive = {
             budgets: [],
             monthlyBudgets: {},
             expenses: [],
+            expenseMetadata: [],
         };
     },
 
@@ -18,14 +19,13 @@ const Drive = {
         if (!userId) return this.getDefaultData();
 
         try {
-            // Query all 3 tables in parallel
-            const [budgetsRes, monthlyRes, expensesRes] = await Promise.all([
+            const [budgetsRes, monthlyRes, expensesRes, metaRes] = await Promise.all([
                 supabaseClient.from('budgets').select('*').eq('user_id', userId),
                 supabaseClient.from('monthly_budgets').select('*').eq('user_id', userId),
                 supabaseClient.from('expenses').select('*').eq('user_id', userId),
+                supabaseClient.from('expense_metadata').select('*').eq('user_id', userId),
             ]);
 
-            // Transform budgets
             const budgets = (budgetsRes.data || []).map(b => ({
                 id: b.id,
                 name: b.name,
@@ -33,14 +33,12 @@ const Drive = {
                 color: b.color,
             }));
 
-            // Transform monthly budgets: { "2026-04": { "budgetId": { amount: 500000 } } }
             const monthlyBudgets = {};
             (monthlyRes.data || []).forEach(m => {
                 if (!monthlyBudgets[m.month_key]) monthlyBudgets[m.month_key] = {};
                 monthlyBudgets[m.month_key][m.budget_id] = { amount: m.amount };
             });
 
-            // Transform expenses
             const expenses = (expensesRes.data || []).map(e => ({
                 id: e.id,
                 date: e.date,
@@ -49,7 +47,16 @@ const Drive = {
                 note: e.note || '',
             }));
 
-            return { budgets, monthlyBudgets, expenses };
+            const expenseMetadata = (metaRes.data || []).map(m => ({
+                id: m.id,
+                expense_id: m.expense_id,
+                qr_bank: m.qr_bank || '',
+                qr_account: m.qr_account || '',
+                qr_recipient: m.qr_recipient || '',
+                qr_memo: m.qr_memo || '',
+            }));
+
+            return { budgets, monthlyBudgets, expenses, expenseMetadata };
         } catch (e) {
             console.error('Supabase loadData error:', e);
             Utils.showToast('Lỗi tải dữ liệu', 'error');
@@ -57,7 +64,7 @@ const Drive = {
         }
     },
 
-    // Save full data object to Supabase (sync all tables)
+    // Save full data object to Supabase
     async saveData(data) {
         const userId = Auth.getUserId();
         if (!userId) return;
@@ -122,6 +129,23 @@ const Drive = {
                     .delete()
                     .eq('user_id', userId)
                     .not('id', 'in', `(${expenseIds.join(',')})`);
+            }
+
+            // Upsert expense metadata
+            const metaRows = (data.expenseMetadata || [])
+                .filter(m => m.qr_account) // only save if has account
+                .map(m => ({
+                    expense_id: m.expense_id,
+                    user_id: userId,
+                    qr_bank: m.qr_bank || '',
+                    qr_account: m.qr_account || '',
+                    qr_recipient: m.qr_recipient || '',
+                    qr_memo: m.qr_memo || '',
+                }));
+            if (metaRows.length > 0) {
+                await supabaseClient.from('expense_metadata').upsert(metaRows, {
+                    onConflict: 'expense_id',
+                });
             }
 
         } catch (e) {
