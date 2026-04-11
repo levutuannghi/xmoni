@@ -326,7 +326,7 @@ const Expense = {
     let deeplink = `https://dl.vietqr.io/pay?app=${app}`;
     if (this.scannedQR && this.scannedQR.accountNo) {
       const qr = this.scannedQR;
-      deeplink += `&ba=${encodeURIComponent(qr.accountNo + '@' + qr.bankBin)}`;
+      deeplink += `&ba=${qr.accountNo}@${qr.bankBin}`;
       if (amount > 0) deeplink += `&am=${amount}`;
       if (qr.addInfo) deeplink += `&tn=${encodeURIComponent(qr.addInfo)}`;
       if (qr.accountName) deeplink += `&bn=${encodeURIComponent(qr.accountName)}`;
@@ -352,10 +352,23 @@ const Expense = {
     `;
 
     try {
-      this.qrScanner = new Html5Qrcode('qr-reader');
+      this.qrScanner = new Html5Qrcode('qr-reader', {
+        formatsToSupport: [Html5QrcodeSupportedFormats.QR_CODE],
+        verbose: false,
+      });
+      const scanConfig = {
+        fps: 20,
+        qrbox: { width: 280, height: 280 },
+        disableFlip: true,
+        videoConstraints: {
+          facingMode: 'environment',
+          width: { ideal: 1920 },
+          height: { ideal: 1080 },
+        },
+      };
       this.qrScanner.start(
         { facingMode: 'environment' },
-        { fps: 15, qrbox: undefined, aspectRatio: 1.0 },
+        scanConfig,
         (text) => this.onQRScanned(text),
         () => { }
       ).catch((err) => {
