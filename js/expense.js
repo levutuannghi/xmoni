@@ -4,6 +4,7 @@
 
 const Expense = {
   inputAmount: '',
+  lastCategoryId: localStorage.getItem('xmoni_last_category') || null,
 
   // Render expense view
   render() {
@@ -92,15 +93,21 @@ const Expense = {
         </div>
 
         <div class="quick-add-categories" id="qa-categories">
-          ${data.budgets.map((b, i) => `
-            <button class="category-chip ${i === 0 ? 'selected' : ''}" 
+          ${data.budgets.map((b) => {
+      const isSelected = this.lastCategoryId ? b.id === this.lastCategoryId : false;
+      return `
+            <button class="category-chip ${isSelected ? 'selected' : ''}" 
               style="--chip-color: ${b.color}"
               data-id="${b.id}"
               onclick="Expense.selectCategory(this)">
               <span>${b.icon}</span>
               <span>${b.name}</span>
             </button>
-          `).join('')}
+          `;
+    }).join('')}
+          ${!this.lastCategoryId || !data.budgets.find(b => b.id === this.lastCategoryId) ? `
+            <script>document.querySelector('.category-chip')?.classList.add('selected')</script>
+          ` : ''}
         </div>
 
         <div class="quick-add-display">
@@ -114,6 +121,12 @@ const Expense = {
 
         <div class="quick-add-note">
           <input type="text" id="qa-note" placeholder="Ghi chú (không bắt buộc)" maxlength="100">
+        </div>
+
+        <div class="preset-amounts">
+          ${[10, 15, 20, 25, 30, 50, 100, 200].map(v => `
+            <button class="preset-btn" onclick="Expense.presetAmount(${v})">${v}k</button>
+          `).join('')}
         </div>
 
         <div class="numpad">
@@ -144,14 +157,31 @@ const Expense = {
     `;
 
     modal.classList.add('active');
-    // Focus note after render
-    setTimeout(() => document.getElementById('qa-note')?.focus(), 300);
+    // Auto-select first if none selected
+    if (!modal.querySelector('.category-chip.selected')) {
+      modal.querySelector('.category-chip')?.classList.add('selected');
+    }
   },
 
   // Category selection
   selectCategory(btn) {
     document.querySelectorAll('.category-chip').forEach(c => c.classList.remove('selected'));
     btn.classList.add('selected');
+    this.lastCategoryId = btn.dataset.id;
+    localStorage.setItem('xmoni_last_category', btn.dataset.id);
+  },
+
+  // Preset amount - one tap entry (in thousands)
+  presetAmount(k) {
+    this.inputAmount = k.toString();
+    const realAmount = k * 1000;
+    const display = document.getElementById('qa-amount');
+    display.textContent = Utils.formatVND(realAmount);
+    display.classList.add('has-value');
+    document.getElementById('btn-save-expense').disabled = false;
+    // Highlight the selected preset
+    document.querySelectorAll('.preset-btn').forEach(b => b.classList.remove('active'));
+    event.target.classList.add('active');
   },
 
   // Numpad input (in thousands - x1000)

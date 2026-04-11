@@ -49,6 +49,11 @@ const App = {
 
         // Render current view
         this.switchView('dashboard');
+
+        // Auto-open quick add if user has budgets
+        if (this.state.data.budgets.length > 0) {
+            setTimeout(() => Expense.showQuickAdd(), 300);
+        }
     },
 
     // Called on logout
@@ -79,7 +84,12 @@ const App = {
         document.getElementById('app-loading').style.display = 'none';
         document.getElementById('main-app').style.display = 'flex';
         this.switchView('dashboard');
-        Utils.showToast('Chế độ demo — dữ liệu lưu trên máy', 'info');
+        if (!silent) Utils.showToast('Chế độ demo — dữ liệu lưu trên máy', 'info');
+
+        // Auto-open quick add if user has budgets
+        if (this.state.data.budgets.length > 0) {
+            setTimeout(() => Expense.showQuickAdd(), 300);
+        }
     },
 
     // Switch between views
