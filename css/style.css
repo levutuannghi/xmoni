@@ -1211,6 +1211,29 @@ textarea {
   white-space: nowrap;
 }
 
+/* QR Transfer button (after scan) */
+.btn-qr-transfer {
+  flex: 1;
+  padding: 12px 16px;
+  background: linear-gradient(135deg, var(--accent-primary), var(--accent-secondary));
+  color: white;
+  border: none;
+  border-radius: var(--radius-md);
+  font-size: 0.85rem;
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+/* Labeled bank buttons */
+.quick-pay-btn.labeled {
+  padding: 8px 10px;
+  font-size: 0.7rem;
+  min-width: unset;
+  border-radius: var(--radius-sm);
+  gap: 2px;
+}
+
 /* Daily spending bar in quick-add */
 .qa-daily-bar {
   background: rgba(255, 255, 255, 0.03);

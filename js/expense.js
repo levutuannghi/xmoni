@@ -7,6 +7,9 @@ const Expense = {
   lastCategoryId: localStorage.getItem('xmoni_last_category') || null,
   scannedQR: null, // stores parsed QR data after scan
 
+  // Init: load bank list from VietQR API
+  init() { this.loadBankList(); },
+
   // Render expense view
   render() {
     const container = document.getElementById('view-expenses');
@@ -345,23 +348,33 @@ const Expense = {
     return r;
   },
 
-  // Bank BIN map
-  BANK_BIN_MAP: {
-    '970415': { id: 'icb', name: 'VietinBank' },
-    '970418': { id: 'bidv', name: 'BIDV' },
-    '970436': { id: 'vcb', name: 'VCB' },
-    '970407': { id: 'tcb', name: 'TCB' },
-    '970422': { id: 'mb', name: 'MB' },
-    '970416': { id: 'acb', name: 'ACB' },
-    '970432': { id: 'vpb', name: 'VPBank' },
-    '970405': { id: 'vba', name: 'Agri' },
-    '970423': { id: 'tpb', name: 'TPBank' },
-    '970448': { id: 'ocb', name: 'OCB' },
-    '970437': { id: 'hdb', name: 'HDBank' },
-    '970454': { id: 'vib', name: 'VIB' },
-    '970449': { id: 'lpb', name: 'LPBank' },
-    '970443': { id: 'shb', name: 'SHB' },
-    '970431': { id: 'eib', name: 'EximBank' },
+  // Bank list from VietQR API (cached in localStorage)
+  bankList: null,
+
+  async loadBankList() {
+    // Check cache (24h TTL)
+    const cached = localStorage.getItem('xmoni_banks');
+    if (cached) {
+      try {
+        const { data, ts } = JSON.parse(cached);
+        if (Date.now() - ts < 86400000) { this.bankList = data; return; }
+      } catch (e) { }
+    }
+    try {
+      const res = await fetch('https://api.vietqr.io/v2/banks');
+      const json = await res.json();
+      if (json.code === '00' && json.data) {
+        this.bankList = json.data;
+        localStorage.setItem('xmoni_banks', JSON.stringify({ data: json.data, ts: Date.now() }));
+      }
+    } catch (e) { console.warn('Cannot load bank list:', e); }
+  },
+
+  lookupBank(bin) {
+    if (!this.bankList) return null;
+    const bank = this.bankList.find(b => b.bin === bin);
+    if (!bank) return null;
+    return { code: bank.code.toLowerCase(), shortName: bank.shortName, bin: bank.bin };
   },
 
   onQRScanned(text) {
@@ -391,11 +404,12 @@ const Expense = {
     let addInfo = '';
     if (tlv['62']) { const t62 = this.parseEMVCo(tlv['62']); addInfo = t62['08'] || ''; }
 
-    const bank = this.BANK_BIN_MAP[bankBin];
-    const bankName = bank ? bank.name : bankBin;
+    const bank = this.lookupBank(bankBin);
+    const bankName = bank ? bank.shortName : bankBin;
+    const bankCode = bank ? bank.code : null;
 
     // Store scanned data
-    this.scannedQR = { bankBin, accountNo, amount, addInfo, bankName, accountName };
+    this.scannedQR = { bankBin, accountNo, amount, addInfo, bankName, accountName, bankCode };
 
     // Show banner with scanned info
     banner.innerHTML = `
@@ -403,6 +417,17 @@ const Expense = {
         <span>✅ ${bankName} • ${accountNo}${accountName ? ' • ' + accountName : ''}${amount > 0 ? ' • ' + Utils.formatCompactVND(amount) : ''}</span>
       </div>
     `;
+
+    // Replace bank buttons with auto-detected transfer button
+    if (bankCode) {
+      const bottomRow = document.querySelector('.qa-bottom-row');
+      if (bottomRow) {
+        bottomRow.innerHTML = `
+          <button class="btn-save-expense" id="btn-save-expense" onclick="Expense.saveExpense()" ${this.inputAmount ? '' : 'disabled'}>💾 Lưu</button>
+          <button class="btn-qr-transfer" onclick="Expense.saveAndPay('${bankCode}')">💳 Chuyển qua ${bankName}</button>
+        `;
+      }
+    }
 
     // Auto-fill amount
     if (amount > 0) {

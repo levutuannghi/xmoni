@@ -12,6 +12,7 @@ const App = {
     // Initialize app
     async init() {
         this.state.selectedMonth = Utils.getCurrentMonthKey();
+        Expense.init(); // Load VietQR bank list
 
         // Show loading
         document.getElementById('app-loading').style.display = 'flex';
