@@ -586,13 +586,39 @@ const Expense = {
     const file = event.target.files[0];
     if (!file) return;
     try {
-      const result = await QrScanner.scanImage(file, { returnDetailedScanResult: true });
+      // Try default scan first
+      const result = await QrScanner.scanImage(file, {
+        returnDetailedScanResult: true,
+        alsoTryWithoutScanRegion: true,
+      });
       this.onQRScanned(result.data);
     } catch (err) {
-      const banner = document.getElementById('qr-scan-banner');
-      if (banner) {
-        banner.innerHTML = '<div class="qr-banner error">\u274c Không tìm thấy mã QR trong ảnh</div>';
-        setTimeout(() => banner.innerHTML = '', 3000);
+      // Fallback: draw to canvas for better detection
+      try {
+        const img = new Image();
+        const url = URL.createObjectURL(file);
+        await new Promise((resolve, reject) => {
+          img.onload = resolve;
+          img.onerror = reject;
+          img.src = url;
+        });
+        const canvas = document.createElement('canvas');
+        canvas.width = img.naturalWidth;
+        canvas.height = img.naturalHeight;
+        const ctx = canvas.getContext('2d');
+        ctx.drawImage(img, 0, 0);
+        URL.revokeObjectURL(url);
+        const result = await QrScanner.scanImage(canvas, {
+          returnDetailedScanResult: true,
+          alsoTryWithoutScanRegion: true,
+        });
+        this.onQRScanned(result.data);
+      } catch (err2) {
+        const banner = document.getElementById('qr-scan-banner');
+        if (banner) {
+          banner.innerHTML = '<div class="qr-banner error">\u274c Không tìm thấy mã QR trong ảnh</div>';
+          setTimeout(() => banner.innerHTML = '', 3000);
+        }
       }
     }
     event.target.value = '';
