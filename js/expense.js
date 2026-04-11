@@ -199,10 +199,9 @@ const Expense = {
       return (b.monthlyInstall || 0) - (a.monthlyInstall || 0);
     });
 
-    const isAndroid = /android/i.test(navigator.userAgent);
     grid.innerHTML = sorted.map(app => {
       let badge = '';
-      if (app.appId === 'tpb' && isAndroid) badge = '<span class="bank-badge tpb">\u26a1</span>';
+      if (app.appId === 'tpb') badge = '<span class="bank-badge tpb">\u26a1</span>';
       else if (app.autofill === 1) badge = '<span class="bank-badge auto">\u2713</span>';
       const cleanName = app.appName.replace(/[\u200E\u200F]/g, '');
       return `<button class="bank-grid-btn" onclick="Expense.saveAndPay('${app.appId}')" title="${cleanName}">
@@ -332,9 +331,8 @@ const Expense = {
       const memo = qr.addInfo || 'XMoni';
       const name = qr.accountName || '';
 
-      // TPBank on Android: use hydro:// scheme with raw QR content
-      const isAndroid = /android/i.test(navigator.userAgent);
-      if (app === 'tpb' && isAndroid && qr.rawText) {
+      // TPBank: use hydro:// scheme with raw QR content (works on both iOS & Android)
+      if (app === 'tpb' && qr.rawText) {
         // Rebuild QR with user's amount if different
         let qrContent = qr.rawText;
         if (amount > 0 && amount !== qr.amount) {
