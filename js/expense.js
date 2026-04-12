@@ -88,27 +88,7 @@ const Expense = {
     this.qrAmountLocked = false;
     const modal = document.getElementById('expense-modal');
 
-    // Daily spending calc
-    const monthKey = Utils.getCurrentMonthKey();
     const today = Utils.getToday();
-    const totalDays = Utils.getDaysInMonth(monthKey);
-    const remainingDays = Utils.getRemainingDays(monthKey);
-
-    let totalBudget = 0, totalSpent = 0, totalCarryover = 0, todaySpent = 0;
-    data.budgets.forEach(b => {
-      const monthly = (data.monthlyBudgets[monthKey] || {})[b.id] || {};
-      totalBudget += monthly.amount || 0;
-      totalCarryover += Budget.calculateCarryovers(monthKey)[b.id] || 0;
-      totalSpent += Budget.getTotalSpent(monthKey, b.id);
-    });
-    todaySpent = data.expenses.filter(e => e.date === today).reduce((s, e) => s + e.amount, 0);
-
-    const totalRemaining = totalBudget + totalCarryover - totalSpent;
-    const dailyRaw = remainingDays > 0 ? totalRemaining / remainingDays : 0;
-    const dailyBase = totalDays > 0 ? totalBudget / totalDays : 0;
-    const dailyAllowance = Math.max(0, Math.round(Math.min(dailyRaw, dailyBase)));
-    const dailyPct = dailyAllowance > 0 ? Math.min((todaySpent / dailyAllowance) * 100, 100) : 0;
-    const dailyClass = dailyPct > 85 ? 'danger' : dailyPct > 60 ? 'warning' : 'safe';
 
     // Bank app display
     const bankDisplay = this._getBankDisplay();
@@ -118,7 +98,7 @@ const Expense = {
 
         <div class="quick-add-header">
           <h3>Thêm chi tiêu</h3>
-          <span class="qa-header-daily ${dailyClass}">${Utils.formatCompactVND(todaySpent)} / ${Utils.formatCompactVND(dailyAllowance)}</span>
+          <span class="qa-header-daily" id="qa-header-budget"></span>
           <button class="btn-icon" onclick="Expense.closeQuickAdd()">✕</button>
         </div>
 
@@ -202,8 +182,10 @@ const Expense = {
 
     modal.classList.add('active');
     if (!modal.querySelector('.category-chip.selected')) {
-      modal.querySelector('.category-chip')?.classList.add('selected');
+      const first = modal.querySelector('.category-chip');
+      if (first) { first.classList.add('selected'); this.lastCategoryId = first.dataset.id; }
     }
+    this._updateHeaderBudget();
   },
 
   // Bank display helper
@@ -328,6 +310,37 @@ const Expense = {
     btn.classList.add('selected');
     this.lastCategoryId = btn.dataset.id;
     localStorage.setItem('xmoni_last_category', btn.dataset.id);
+    this._updateHeaderBudget();
+  },
+
+  _updateHeaderBudget() {
+    const el = document.getElementById('qa-header-budget');
+    if (!el) return;
+    const catId = this.lastCategoryId;
+    const data = App.state.data;
+    const budget = data.budgets.find(b => b.id === catId);
+    if (!budget) { el.innerHTML = ''; return; }
+
+    const monthKey = Utils.getCurrentMonthKey();
+    const today = Utils.getToday();
+    const totalDays = Utils.getDaysInMonth(monthKey);
+    const remainingDays = Utils.getRemainingDays(monthKey);
+
+    const monthly = (data.monthlyBudgets[monthKey] || {})[catId] || {};
+    const budgetAmt = monthly.amount || 0;
+    const carryover = Budget.calculateCarryovers(monthKey)[catId] || 0;
+    const spent = Budget.getTotalSpent(monthKey, catId);
+    const todaySpent = data.expenses.filter(e => e.date === today && e.category === catId).reduce((s, e) => s + e.amount, 0);
+
+    const remaining = budgetAmt + carryover - spent;
+    const dailyRaw = remainingDays > 0 ? remaining / remainingDays : 0;
+    const dailyBase = totalDays > 0 ? budgetAmt / totalDays : 0;
+    const dailyAllowance = Math.max(0, Math.round(Math.min(dailyRaw, dailyBase)));
+    const pct = dailyAllowance > 0 ? Math.min((todaySpent / dailyAllowance) * 100, 100) : 0;
+    const cls = pct > 85 ? 'danger' : pct > 60 ? 'warning' : 'safe';
+
+    el.className = 'qa-header-daily ' + cls;
+    el.innerHTML = `${Utils.formatCompactVND(todaySpent)} / ${Utils.formatCompactVND(dailyAllowance)}`;
   },
 
   // === Amount Input ===
