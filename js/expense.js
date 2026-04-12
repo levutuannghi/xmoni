@@ -660,6 +660,7 @@ const Expense = {
     const bankBin = merchantData['00'] || '';
     const accountNo = merchantData['01'] || '';
     const amount = tlv['54'] ? parseInt(tlv['54']) : 0;
+    console.log('[QR Debug] tag54 raw:', JSON.stringify(tlv['54']), '→ parsed amount:', amount);
     const accountName = tlv['59'] || '';
 
     let addInfo = '';
