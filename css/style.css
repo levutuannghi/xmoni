@@ -1739,6 +1739,7 @@ select.qa-transfer-input option {
   object-fit: contain;
   border-radius: 12px;
   background: #fff;
+  padding: 6px;
   box-shadow: 0 1px 4px rgba(0, 0, 0, 0.2);
 }
 
