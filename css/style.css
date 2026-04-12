@@ -1168,26 +1168,36 @@ textarea {
   font-size: 1rem;
 }
 
+
 .qa-header-daily {
   flex: 1;
   text-align: center;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+}
+.qa-budget-text {
   font-size: 0.75rem;
   font-weight: 600;
-  color: var(--text-muted);
   letter-spacing: 0.3px;
 }
-
-.qa-header-daily.safe {
-  color: var(--accent-success);
+.qa-budget-bar {
+  width: 100%;
+  max-width: 120px;
+  height: 4px;
+  background: rgba(255,255,255,0.1);
+  border-radius: 2px;
+  overflow: hidden;
 }
-
-.qa-header-daily.warning {
-  color: #FFB800;
+.qa-budget-bar-fill {
+  height: 100%;
+  border-radius: 2px;
+  transition: width 0.4s ease;
 }
-
-.qa-header-daily.danger {
-  color: var(--accent-danger);
-}
+.qa-budget-bar-fill.safe { background: linear-gradient(90deg, #2ed573, #7bed9f); }
+.qa-budget-bar-fill.warning { background: linear-gradient(90deg, #ffa502, #eccc68); }
+.qa-budget-bar-fill.danger { background: linear-gradient(90deg, #ff4757, #ff6b81); }
 
 .qa-header-actions {
   display: flex;

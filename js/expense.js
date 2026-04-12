@@ -340,7 +340,10 @@ const Expense = {
     const cls = pct > 85 ? 'danger' : pct > 60 ? 'warning' : 'safe';
 
     el.className = 'qa-header-daily ' + cls;
-    el.innerHTML = `${Utils.formatCompactVND(todaySpent)} / ${Utils.formatCompactVND(dailyAllowance)}`;
+    el.innerHTML = `
+      <span class="qa-budget-text">${Utils.formatCompactVND(todaySpent)} / ${Utils.formatCompactVND(dailyAllowance)}</span>
+      <div class="qa-budget-bar"><div class="qa-budget-bar-fill ${cls}" style="width:${Math.round(pct)}%"></div></div>
+    `;
   },
 
   // === Amount Input ===
