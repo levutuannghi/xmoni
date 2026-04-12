@@ -330,7 +330,7 @@ const Expense = {
     const budgetAmt = monthly.amount || 0;
     const carryover = Budget.calculateCarryovers(monthKey)[catId] || 0;
     const spent = Budget.getTotalSpent(monthKey, catId);
-    const todaySpent = data.expenses.filter(e => e.date === today && e.category === catId).reduce((s, e) => s + e.amount, 0);
+    const todaySpent = data.expenses.filter(e => e.date === today && e.budgetId === catId).reduce((s, e) => s + e.amount, 0);
 
     const remaining = budgetAmt + carryover - spent;
     const dailyRaw = remainingDays > 0 ? remaining / remainingDays : 0;
