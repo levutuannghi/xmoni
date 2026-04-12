@@ -1734,10 +1734,10 @@ select.qa-transfer-input option {
 }
 
 .bank-picker-item img {
-  width: 64px;
-  height: 64px;
+  width: 80px;
+  height: 80px;
   object-fit: contain;
-  border-radius: 14px;
+  border-radius: 16px;
   background: #fff;
   box-shadow: 0 1px 4px rgba(0, 0, 0, 0.2);
 }
