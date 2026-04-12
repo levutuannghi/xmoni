@@ -961,7 +961,7 @@ const Expense = {
       this.appList.unshift({
         appId: 'momo',
         appName: 'MoMo',
-        appLogo: 'https://upload.wikimedia.org/wikipedia/vi/f/fe/MoMo_Logo.png',
+        appLogo: 'https://developers.momo.vn/v3/assets/images/MOMO-Logo-App-6262c3743a290ef02396a24ea2b66c35.png',
         autofill: 0,
         monthlyInstall: 999999 // sort to top
       });
