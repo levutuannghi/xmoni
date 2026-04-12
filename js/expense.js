@@ -659,8 +659,9 @@ const Expense = {
     const merchantData = this.parseEMVCo(tag38Data['01'] || '');
     const bankBin = merchantData['00'] || '';
     const accountNo = merchantData['01'] || '';
-    const amount = tlv['54'] ? parseInt(tlv['54']) : 0;
-    console.log('[QR Debug] tag54 raw:', JSON.stringify(tlv['54']), '→ parsed amount:', amount);
+    const rawAmount = tlv['54'] ? tlv['54'].replace(/[^0-9.]/g, '') : '';
+    const amount = rawAmount ? Math.round(parseFloat(rawAmount)) : 0;
+    console.log('[QR Debug] tag54 raw:', JSON.stringify(tlv['54']), '→ cleaned:', rawAmount, '→ amount:', amount);
     const accountName = tlv['59'] || '';
 
     let addInfo = '';
