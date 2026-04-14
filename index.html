@@ -137,11 +137,11 @@
   <!-- Scripts (order matters) -->
   <script src="js/utils.js"></script>
   <script src="js/auth.js"></script>
-  <script src="js/drive.js?v=20"></script>
-  <script src="js/budget.js?v=20"></script>
-  <script src="js/expense.js?v=20"></script>
-  <script src="js/dashboard.js?v=20"></script>
-  <script src="js/app.js?v=20"></script>
+  <script src="js/drive.js?v=21"></script>
+  <script src="js/budget.js?v=21"></script>
+  <script src="js/expense.js?v=21"></script>
+  <script src="js/dashboard.js?v=21"></script>
+  <script src="js/app.js?v=21"></script>
 
   <!-- Register Service Worker -->
   <script>
@@ -149,7 +149,7 @@
       navigator.serviceWorker.getRegistrations().then(regs => {
         regs.forEach(r => r.unregister());
       }).then(() => {
-        navigator.serviceWorker.register('./sw.js?v=20', { updateViaCache: 'none' })
+        navigator.serviceWorker.register('./sw.js?v=21', { updateViaCache: 'none' })
           .then(reg => { reg.update(); });
       });
     }

@@ -381,7 +381,7 @@ const Expense = {
   },
 
   // === Save Expense ===
-  saveExpense() {
+  async saveExpense() {
     const parsed = parseFloat(this.inputAmount) || 0;
     const amount = Math.round(parsed * 1000);
     if (amount === 0) return;
@@ -418,14 +418,10 @@ const Expense = {
       };
     }
 
-    App.state.data.expenses.push(expense);
-    if (metadata) {
-      if (!App.state.data.expenseMetadata) App.state.data.expenseMetadata = [];
-      App.state.data.expenseMetadata.push(metadata);
-    }
-    Drive.queueSave(App.state.data);
+    // Commit: localStorage instant + WAL + async Supabase sync
+    Drive.commitChange('upsert_expense', { expense, metadata });
 
-    // If bank app selected, open deep link
+    // If bank app selected, open deep link AFTER save is persisted
     if (this.selectedBankApp && stk) {
       this._openBankDeepLink(amount);
     }
@@ -515,11 +511,7 @@ const Expense = {
   // === Delete expense ===
   deleteExpense(id) {
     if (!confirm('Xóa khoản chi này?')) return;
-    App.state.data.expenses = App.state.data.expenses.filter(e => e.id !== id);
-    if (App.state.data.expenseMetadata) {
-      App.state.data.expenseMetadata = App.state.data.expenseMetadata.filter(m => m.expense_id !== id);
-    }
-    Drive.queueSave(App.state.data);
+    Drive.commitChange('delete_expense', { id });
     this.render();
     Utils.showToast('Đã xóa');
   },

@@ -1,5 +1,5 @@
 ﻿// XMoni Service Worker - Network-first caching
-const CACHE_NAME = 'xmoni-v38';
+const CACHE_NAME = 'xmoni-v40';
 const ASSETS = [
     './',
     './index.html',
@@ -47,6 +47,11 @@ self.addEventListener('fetch', (e) => {
 
     // Skip VietQR API
     if (url.hostname.includes('vietqr.io')) {
+        return;
+    }
+
+    // Skip Supabase API (data must always be fresh from network)
+    if (url.hostname.includes('supabase.co') || url.hostname.includes('supabase.io')) {
         return;
     }
 

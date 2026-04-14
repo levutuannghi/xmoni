@@ -152,7 +152,6 @@ const Budget = {
   setMonthlyAmount(budgetId, valueStr) {
     const inputValue = Utils.parseVND(valueStr);
     const monthKey = App.state.selectedMonth;
-    const data = App.state.data;
     const mode = this.getBudgetMode(budgetId);
 
     // If daily mode, multiply by days in month
@@ -162,15 +161,7 @@ const Budget = {
       amount = inputValue * totalDays;
     }
 
-    if (!data.monthlyBudgets[monthKey]) {
-      data.monthlyBudgets[monthKey] = {};
-    }
-    if (!data.monthlyBudgets[monthKey][budgetId]) {
-      data.monthlyBudgets[monthKey][budgetId] = {};
-    }
-    data.monthlyBudgets[monthKey][budgetId].amount = amount;
-
-    Drive.queueSave(data);
+    Drive.commitChange('set_monthly_budget', { monthKey, budgetId, amount });
     this.render();
     Utils.showToast('Đã cập nhật budget');
   },
@@ -187,20 +178,14 @@ const Budget = {
       return;
     }
 
-    if (!data.monthlyBudgets[monthKey]) {
-      data.monthlyBudgets[monthKey] = {};
-    }
-
+    const entries = {};
     data.budgets.forEach(b => {
       if (prevBudgets[b.id]) {
-        data.monthlyBudgets[monthKey][b.id] = {
-          ...data.monthlyBudgets[monthKey][b.id],
-          amount: prevBudgets[b.id].amount || 0,
-        };
+        entries[b.id] = { amount: prevBudgets[b.id].amount || 0 };
       }
     });
 
-    Drive.queueSave(data);
+    Drive.commitChange('copy_monthly_budgets', { monthKey, entries });
     this.render();
     Utils.showToast('Đã copy budget từ tháng trước');
   },
@@ -223,8 +208,7 @@ const Budget = {
 
     if (!confirm(`Xóa danh mục "${budget.name}"? Dữ liệu chi tiêu liên quan sẽ giữ lại.`)) return;
 
-    App.state.data.budgets = App.state.data.budgets.filter(b => b.id !== id);
-    Drive.queueSave(App.state.data);
+    Drive.commitChange('delete_budget', { id });
     this.render();
     Utils.showToast('Đã xóa danh mục');
   },
@@ -302,25 +286,11 @@ const Budget = {
       return;
     }
 
-    const data = App.state.data;
+    const budget = existingId
+      ? { id: existingId, name, icon, color }
+      : { id: Utils.generateId(), name, icon, color };
 
-    if (existingId) {
-      const budget = data.budgets.find(b => b.id === existingId);
-      if (budget) {
-        budget.name = name;
-        budget.icon = icon;
-        budget.color = color;
-      }
-    } else {
-      data.budgets.push({
-        id: Utils.generateId(),
-        name,
-        icon,
-        color,
-      });
-    }
-
-    Drive.queueSave(data);
+    Drive.commitChange('upsert_budget', { budget });
     this.closeCategoryModal();
     this.render();
     Utils.showToast(existingId ? 'Đã cập nhật' : 'Đã tạo danh mục mới');
