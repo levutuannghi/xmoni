@@ -29,6 +29,9 @@ CREATE TABLE IF NOT EXISTS expenses (
   budget_id TEXT NOT NULL,
   amount INTEGER NOT NULL,
   note TEXT DEFAULT '',
+  split_count INTEGER DEFAULT NULL,
+  split_unit TEXT DEFAULT NULL,
+  split_start TEXT DEFAULT NULL,
   created_at TIMESTAMPTZ DEFAULT now()
 );
 

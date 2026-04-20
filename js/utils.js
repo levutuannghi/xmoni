@@ -16,6 +16,13 @@ const Utils = {
     return (amount < 0 ? '-' : '') + formatted + 'đ';
   },
 
+  // Parse VND string back to integer (e.g., "1.234.567đ" → 1234567)
+  parseVND(str) {
+    if (!str) return 0;
+    const cleaned = String(str).replace(/[^\d]/g, '');
+    return parseInt(cleaned) || 0;
+  },
+
   // Format compact VND (e.g., 1.5tr, 500k)
   formatCompactVND(amount) {
     const abs = Math.abs(amount);
@@ -132,4 +139,46 @@ const Utils = {
 
   // Color palette for budgets
   COLOR_LIST: ['#FF6B6B', '#4ECDC4', '#45B7D1', '#96CEB4', '#FFEAA7', '#DDA0DD', '#98D8C8', '#F7DC6F', '#BB8FCE', '#85C1E9', '#F1948A', '#82E0AA', '#F8C471', '#AED6F1', '#D7BDE2', '#A3E4D7'],
+
+  // === Date Arithmetic ===
+  addDays(dateStr, n) {
+    const d = new Date(dateStr);
+    d.setDate(d.getDate() + n);
+    return d.toISOString().split('T')[0];
+  },
+
+  addMonths(dateStr, n) {
+    const d = new Date(dateStr);
+    const day = d.getDate();
+    d.setMonth(d.getMonth() + n);
+    // Handle month overflow (e.g., Jan 31 + 1 month = Feb 28)
+    if (d.getDate() !== day) d.setDate(0);
+    return d.toISOString().split('T')[0];
+  },
+
+  // Get split installment dates for preview
+  getSplitDates(startDate, count, unit) {
+    const dates = [];
+    for (let i = 0; i < count; i++) {
+      switch (unit) {
+        case 'day': dates.push(this.addDays(startDate, i)); break;
+        case 'week': dates.push(this.addDays(startDate, i * 7)); break;
+        case 'month': dates.push(this.addMonths(startDate, i)); break;
+      }
+    }
+    return dates;
+  },
+
+  // Calculate how much of a split expense falls in a given month
+  getSplitAmountForMonth(expense, monthKey) {
+    if (!expense.splitCount || expense.splitCount <= 1) return expense.amount;
+    const perUnit = Math.round(expense.amount / expense.splitCount);
+    const dates = this.getSplitDates(
+      expense.splitStart || expense.date,
+      expense.splitCount,
+      expense.splitUnit || 'month'
+    );
+    const count = dates.filter(d => this.getMonthKey(d) === monthKey).length;
+    return perUnit * count;
+  },
 };

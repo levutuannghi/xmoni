@@ -52,18 +52,19 @@ const Expense = {
             </div>
             ${expenses.map(e => {
       const budget = data.budgets.find(b => b.id === e.budgetId);
+      const splitBadge = e.splitCount > 1 ? `<span class="split-badge">✂️ ${e.splitCount} ${e.splitUnit === 'day' ? 'ngày' : e.splitUnit === 'week' ? 'tuần' : 'tháng'}</span>` : '';
+      const displayAmount = e.splitCount > 1 ? Utils.getSplitAmountForMonth(e, monthKey) : e.amount;
       return `
-                <div class="expense-item" data-id="${e.id}">
+                <div class="expense-item" data-id="${e.id}" onclick="Expense.showEditExpense('${e.id}')">
                   <div class="expense-item-left">
                     <span class="expense-item-icon" style="background: ${budget ? budget.color : '#666'}">${budget ? budget.icon : '?'}</span>
                     <div class="expense-item-info">
-                      <span class="expense-item-category">${budget ? budget.name : 'Đã xóa'}</span>
+                      <span class="expense-item-category">${budget ? budget.name : 'Đã xóa'} ${splitBadge}</span>
                       ${e.note ? `<span class="expense-item-note">${e.note}</span>` : ''}
                     </div>
                   </div>
                   <div class="expense-item-right">
-                    <span class="expense-item-amount">-${Utils.formatVND(e.amount)}</span>
-                    <button class="btn-delete" onclick="Expense.deleteExpense('${e.id}')">×</button>
+                    <span class="expense-item-amount">-${Utils.formatVND(displayAmount)}</span>
                   </div>
                 </div>
               `;
@@ -165,6 +166,7 @@ const Expense = {
             <button class="btn-bank-selector" id="btn-bank-selector" onclick="Expense.showBankPicker()">
               ${bankDisplay}
             </button>
+            <button class="btn-split-expense" onclick="Expense.showSplitFromQuickAdd()">✂️</button>
             <button class="btn-save-expense" id="btn-save-expense" onclick="Expense.saveExpense()" disabled>💾 Lưu</button>
           </div>
           <div class="qa-scan-row">
@@ -981,5 +983,269 @@ const Expense = {
     const bank = this.bankList.find(b => b.bin === bin);
     if (!bank) return null;
     return { code: bank.code.toLowerCase(), shortName: bank.shortName, bin: bank.bin };
+  },
+
+  // ========== EDIT EXPENSE ==========
+  showEditExpense(id) {
+    const data = App.state.data;
+    const expense = data.expenses.find(e => e.id === id);
+    if (!expense) return;
+
+    const budget = data.budgets.find(b => b.id === expense.budgetId);
+    const modal = document.getElementById('expense-modal');
+
+    modal.innerHTML = `
+      <div class="modal-content quick-add-modal slide-up">
+        <div class="quick-add-header">
+          <h3>Chỉnh sửa chi tiêu</h3>
+          <button class="btn-icon" onclick="Expense.closeQuickAdd()">✕</button>
+        </div>
+        <div class="qa-body">
+          <div class="edit-field">
+            <label>Danh mục</label>
+            <div class="quick-add-categories" id="edit-categories">
+              ${data.budgets.map(b => {
+      const sel = b.id === expense.budgetId ? 'selected' : '';
+      return `<button class="category-chip ${sel}" style="--chip-color:${b.color}" data-id="${b.id}" onclick="Expense.selectEditCategory(this)"><span>${b.icon}</span><span>${b.name}</span></button>`;
+    }).join('')}
+            </div>
+          </div>
+          <div class="edit-field">
+            <label>Số tiền</label>
+            <div class="input-vnd" style="justify-content:center;font-size:1.3rem">
+              <input type="text" inputmode="numeric" id="edit-amount" value="${expense.amount.toLocaleString('vi-VN')}" onfocus="this.select()" style="text-align:center;font-size:1.3rem;width:100%">
+              <span>đ</span>
+            </div>
+          </div>
+          <div class="edit-field">
+            <label>Ngày</label>
+            <input type="date" id="edit-date" value="${expense.date}" class="qa-transfer-input">
+          </div>
+          <div class="edit-field">
+            <label>Ghi chú</label>
+            <input type="text" id="edit-note" value="${expense.note || ''}" class="qa-transfer-input" placeholder="Ghi chú (tuỳ chọn)">
+          </div>
+
+          <div class="edit-split-section">
+            <label>✂️ Chia nhỏ</label>
+            <div class="split-controls">
+              <div class="split-row">
+                <span>Chia trong</span>
+                <input type="number" id="edit-split-count" min="1" max="120" value="${expense.splitCount || 1}" class="split-input" oninput="Expense.updateEditSplitPreview()">
+                <select id="edit-split-unit" class="split-select" onchange="Expense.updateEditSplitPreview()">
+                  <option value="day" ${expense.splitUnit === 'day' ? 'selected' : ''}>Ngày</option>
+                  <option value="week" ${expense.splitUnit === 'week' ? 'selected' : ''}>Tuần</option>
+                  <option value="month" ${(!expense.splitUnit || expense.splitUnit === 'month') ? 'selected' : ''}>Tháng</option>
+                </select>
+              </div>
+              <div class="split-row">
+                <span>Bắt đầu</span>
+                <input type="date" id="edit-split-start" value="${expense.splitStart || expense.date}" class="split-date" onchange="Expense.updateEditSplitPreview()">
+              </div>
+              <div id="edit-split-preview" class="split-preview"></div>
+            </div>
+          </div>
+        </div>
+
+        <div class="qa-bottom-bar">
+          <div class="qa-action-row">
+            <button class="btn-delete-expense" onclick="Expense.deleteExpense('${expense.id}')">🗑️ Xóa</button>
+            <button class="btn-save-expense" onclick="Expense.saveEditExpense('${expense.id}')">💾 Lưu</button>
+          </div>
+        </div>
+      </div>
+    `;
+
+    modal.classList.add('active');
+    this.updateEditSplitPreview();
+  },
+
+  selectEditCategory(btn) {
+    document.querySelectorAll('#edit-categories .category-chip').forEach(c => c.classList.remove('selected'));
+    btn.classList.add('selected');
+  },
+
+  updateEditSplitPreview() {
+    const count = parseInt(document.getElementById('edit-split-count')?.value) || 1;
+    const unit = document.getElementById('edit-split-unit')?.value || 'month';
+    const startDate = document.getElementById('edit-split-start')?.value || Utils.getToday();
+    const amountStr = document.getElementById('edit-amount')?.value || '0';
+    const totalAmount = Utils.parseVND(amountStr);
+    const preview = document.getElementById('edit-split-preview');
+    if (!preview) return;
+
+    if (count <= 1) {
+      preview.innerHTML = '<span class="split-hint">Nhập số lớn hơn 1 để chia nhỏ</span>';
+      return;
+    }
+
+    const perUnit = Math.round(totalAmount / count);
+    const dates = Utils.getSplitDates(startDate, Math.min(count, 12), unit); // Show max 12
+    const unitLabel = unit === 'day' ? 'ngày' : unit === 'week' ? 'tuần' : 'tháng';
+
+    preview.innerHTML = `
+      <div class="split-summary">Mỗi ${unitLabel}: <strong>${Utils.formatVND(perUnit)}</strong> × ${count} kỳ</div>
+      <div class="split-dates">
+        ${dates.map((d, i) => `<div class="split-date-item">📅 ${Utils.formatDate(d)} → ${Utils.formatVND(perUnit)}</div>`).join('')}
+        ${count > 12 ? `<div class="split-date-item">... và ${count - 12} kỳ nữa</div>` : ''}
+      </div>
+    `;
+  },
+
+  saveEditExpense(id) {
+    const selectedChip = document.querySelector('#edit-categories .category-chip.selected');
+    if (!selectedChip) { Utils.showToast('Chọn danh mục', 'error'); return; }
+
+    const amount = Utils.parseVND(document.getElementById('edit-amount').value);
+    if (amount <= 0) { Utils.showToast('Nhập số tiền', 'error'); return; }
+
+    const date = document.getElementById('edit-date').value;
+    const note = (document.getElementById('edit-note').value || '').trim();
+    const splitCount = parseInt(document.getElementById('edit-split-count').value) || 1;
+    const splitUnit = document.getElementById('edit-split-unit').value;
+    const splitStart = document.getElementById('edit-split-start').value;
+
+    const expense = {
+      id,
+      date,
+      budgetId: selectedChip.dataset.id,
+      amount,
+      note,
+      splitCount: splitCount > 1 ? splitCount : null,
+      splitUnit: splitCount > 1 ? splitUnit : null,
+      splitStart: splitCount > 1 ? splitStart : null,
+    };
+
+    Drive.commitChange('upsert_expense', { expense, metadata: null });
+    this.closeQuickAdd();
+    Utils.showToast('Đã cập nhật', 'success');
+    if (App.state.currentView === 'expenses') this.render();
+    if (App.state.currentView === 'dashboard') Dashboard.render();
+  },
+
+  // ========== SPLIT FROM QUICK ADD ==========
+  showSplitFromQuickAdd() {
+    const parsed = parseFloat(this.inputAmount) || 0;
+    const amount = Math.round(parsed * 1000);
+    if (amount === 0) { Utils.showToast('Nhập số tiền trước', 'error'); return; }
+
+    const selectedChip = document.querySelector('.category-chip.selected');
+    if (!selectedChip) { Utils.showToast('Chọn danh mục', 'error'); return; }
+
+    // Build note
+    const note = this._buildNote();
+    const date = document.getElementById('qa-date').value;
+
+    // Build metadata if present
+    const stk = (document.getElementById('qa-stk')?.value || '').trim();
+    let metadata = null;
+    if (stk) {
+      const bankBin = (document.getElementById('qa-bank')?.value || '').trim();
+      const bank = this.lookupBank(bankBin);
+      metadata = {
+        expense_id: null, // will be set after generating id
+        qr_bank: bank ? bank.shortName : '',
+        qr_account: stk,
+        qr_recipient: (document.getElementById('qa-recipient')?.value || '').trim(),
+        qr_memo: (document.getElementById('qa-memo')?.value || '').trim(),
+      };
+    }
+
+    // Show split config popup
+    const modal = document.getElementById('expense-modal');
+    modal.innerHTML = `
+      <div class="modal-content quick-add-modal slide-up">
+        <div class="quick-add-header">
+          <h3>✂️ Chia ${Utils.formatVND(amount)}</h3>
+          <button class="btn-icon" onclick="Expense.closeQuickAdd()">✕</button>
+        </div>
+        <div class="qa-body">
+          <div class="split-controls">
+            <div class="split-row">
+              <span>Chia trong</span>
+              <input type="number" id="split-count" min="2" max="120" value="2" class="split-input" oninput="Expense.updateSplitPreview(${amount})">
+              <select id="split-unit" class="split-select" onchange="Expense.updateSplitPreview(${amount})">
+                <option value="day">Ngày</option>
+                <option value="week">Tuần</option>
+                <option value="month" selected>Tháng</option>
+              </select>
+            </div>
+            <div class="split-row">
+              <span>Bắt đầu</span>
+              <input type="date" id="split-start" value="${date}" class="split-date" onchange="Expense.updateSplitPreview(${amount})">
+            </div>
+            <div id="split-preview" class="split-preview"></div>
+          </div>
+        </div>
+        <div class="qa-bottom-bar">
+          <div class="qa-action-row">
+            <button class="btn-secondary" onclick="Expense.showQuickAdd()" style="flex:1">← Quay lại</button>
+            <button class="btn-save-expense" id="btn-confirm-split" onclick="Expense.confirmSplitFromQuickAdd()" style="flex:2">✂️ Tạo chia nhỏ</button>
+          </div>
+        </div>
+      </div>
+    `;
+
+    // Store context for confirm
+    this._splitContext = { amount, budgetId: selectedChip.dataset.id, note, date, metadata };
+
+    modal.classList.add('active');
+    this.updateSplitPreview(amount);
+  },
+
+  updateSplitPreview(totalAmount) {
+    const count = parseInt(document.getElementById('split-count')?.value) || 2;
+    const unit = document.getElementById('split-unit')?.value || 'month';
+    const startDate = document.getElementById('split-start')?.value || Utils.getToday();
+    const preview = document.getElementById('split-preview');
+    if (!preview) return;
+
+    const perUnit = Math.round(totalAmount / count);
+    const dates = Utils.getSplitDates(startDate, Math.min(count, 12), unit);
+    const unitLabel = unit === 'day' ? 'ngày' : unit === 'week' ? 'tuần' : 'tháng';
+
+    preview.innerHTML = `
+      <div class="split-summary">Mỗi ${unitLabel}: <strong>${Utils.formatVND(perUnit)}</strong> × ${count} kỳ</div>
+      <div class="split-dates">
+        ${dates.map(d => `<div class="split-date-item">📅 ${Utils.formatDate(d)} → ${Utils.formatVND(perUnit)}</div>`).join('')}
+        ${count > 12 ? `<div class="split-date-item">... và ${count - 12} kỳ nữa</div>` : ''}
+      </div>
+    `;
+  },
+
+  confirmSplitFromQuickAdd() {
+    const ctx = this._splitContext;
+    if (!ctx) return;
+
+    const count = parseInt(document.getElementById('split-count')?.value) || 2;
+    const unit = document.getElementById('split-unit')?.value || 'month';
+    const startDate = document.getElementById('split-start')?.value || ctx.date;
+
+    const expense = {
+      id: Utils.generateId(),
+      date: ctx.date,
+      budgetId: ctx.budgetId,
+      amount: ctx.amount,
+      note: ctx.note,
+      splitCount: count,
+      splitUnit: unit,
+      splitStart: startDate,
+    };
+
+    const metadata = ctx.metadata;
+    if (metadata) metadata.expense_id = expense.id;
+
+    Drive.commitChange('upsert_expense', { expense, metadata });
+
+    // Open bank app if selected
+    if (this.selectedBankApp && metadata?.qr_account) {
+      this._openBankDeepLink(ctx.amount);
+    }
+
+    this._splitContext = null;
+    this.closeQuickAdd();
+    Utils.showToast(`Đã tạo chia ${count} ${unit === 'day' ? 'ngày' : unit === 'week' ? 'tuần' : 'tháng'}`, 'success');
+    if (App.state.currentView === 'expenses') this.render();
+    if (App.state.currentView === 'dashboard') Dashboard.render();
   },
 };

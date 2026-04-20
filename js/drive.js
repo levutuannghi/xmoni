@@ -268,6 +268,9 @@ const Drive = {
                     id: e.id, user_id: userId,
                     date: e.date, budget_id: e.budgetId,
                     amount: e.amount, note: e.note || '',
+                    split_count: e.splitCount || null,
+                    split_unit: e.splitUnit || null,
+                    split_start: e.splitStart || null,
                 };
                 const { error } = await supabaseClient.from('expenses').upsert([row], { onConflict: 'id' });
                 if (error) throw error;
@@ -379,6 +382,9 @@ const Drive = {
                     expenses: (expensesRes.data || []).map(e => ({
                         id: e.id, date: e.date, budgetId: e.budget_id,
                         amount: e.amount, note: e.note || '',
+                        splitCount: e.split_count || null,
+                        splitUnit: e.split_unit || null,
+                        splitStart: e.split_start || null,
                     })),
                     expenseMetadata: (metaRes.data || []).map(m => ({
                         id: m.id, expense_id: m.expense_id,
@@ -492,6 +498,9 @@ const Drive = {
                     const mapped = {
                         id: newRec.id, date: newRec.date, budgetId: newRec.budget_id,
                         amount: newRec.amount, note: newRec.note || '',
+                        splitCount: newRec.split_count || null,
+                        splitUnit: newRec.split_unit || null,
+                        splitStart: newRec.split_start || null,
                     };
                     // Don't overwrite if we have a pending WAL change for this id
                     if (!wal.some(w => w.action === 'upsert_expense' && w.payload.expense?.id === mapped.id)) {
